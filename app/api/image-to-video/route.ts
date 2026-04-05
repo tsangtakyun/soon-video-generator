@@ -14,9 +14,8 @@ export async function POST(req: NextRequest) {
       input: {
         prompt,
         image_url: imageUrl,
-        aspect_ratio: '9:16',
         duration: '5',
-      },
+      } as Record<string, unknown>,
     })
 
     return NextResponse.json({ request_id })
