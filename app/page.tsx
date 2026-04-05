@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 
+import { supabase } from './lib/supabase'
+
 const PRESETS = [
   {
     key: 'korean', emoji: '🇰🇷', name: '韓劇', desc: '眼神情感，奶油 bokeh',
@@ -143,11 +145,31 @@ export default function Home() {
   const [showScenePicker, setShowScenePicker] = useState(false)
 
   useEffect(() => {
-    const savedChars = localStorage.getItem('soon_characters')
-    if (savedChars) setCharacters(JSON.parse(savedChars))
-    const savedScenes = localStorage.getItem('soon_scenes')
-    if (savedScenes) setScenes(JSON.parse(savedScenes))
-  }, [])
+  loadData()
+}, [])
+
+async function loadData() {
+  const { data: chars } = await supabase.from('characters').select('*').order('created_at', { ascending: true })
+  if (chars) {
+    setCharacters(chars.map(c => ({
+      id: c.id,
+      name: c.name,
+      description: c.description || '',
+      appearanceJson: c.appearance_json || '',
+      imageUrl: c.image_url || '',
+    })))
+  }
+
+  const { data: sceneData } = await supabase.from('scenes').select('*').order('created_at', { ascending: true })
+  if (sceneData) {
+    setScenes(sceneData.map(s => ({
+      id: s.id,
+      name: s.name,
+      description: s.description || '',
+      imageUrl: s.image_url || '',
+    })))
+  }
+}
 
   function selectPreset(preset: typeof PRESETS[0]) {
     setSelectedPreset(preset)
