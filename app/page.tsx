@@ -90,6 +90,13 @@ interface Character {
   imageUrl: string
 }
 
+interface Scene {
+  id: string
+  name: string
+  description: string
+  imageUrl: string
+}
+
 interface Shot {
   number: number
   type: string
@@ -117,10 +124,16 @@ export default function Home() {
   const [characters, setCharacters] = useState<Character[]>([])
   const [showCharPicker, setShowCharPicker] = useState<number | null>(null)
 
-  useEffect(() => {
-    const saved = localStorage.getItem('soon_characters')
-    if (saved) setCharacters(JSON.parse(saved))
-  }, [])
+  const [scenes, setScenes] = useState<Scene[]>([])
+const [selectedScene, setSelectedScene] = useState<Scene | null>(null)
+const [showScenePicker, setShowScenePicker] = useState(false)
+
+useEffect(() => {
+  const savedChars = localStorage.getItem('soon_characters')
+  if (savedChars) setCharacters(JSON.parse(savedChars))
+  const savedScenes = localStorage.getItem('soon_scenes')
+  if (savedScenes) setScenes(JSON.parse(savedScenes))
+}, [])
 
   function selectPreset(preset: typeof PRESETS[0]) {
     setSelectedPreset(preset)
