@@ -7,7 +7,7 @@ interface Character {
   name: string
   description: string
   appearanceJson: string
-  imageUrl: string
+imageUrl: string | null
   createdAt: number
 }
 
@@ -66,7 +66,7 @@ export default function Characters() {
   name,
   description,
   appearanceJson,
-  imageUrl: uploadedImage,
+ imageUrl: uploadedImage || '',
   createdAt: Date.now(),
 }
     saveCharacters([...characters, newChar])
@@ -191,12 +191,10 @@ setError('')
                     </div>
                   )}
                 </div>
-                {uploadedImage && (
-                  <button onClick={addCharacter}
-                    className="w-full py-3 bg-[#e8d5b0] text-[#0a0a0a] rounded-xl text-xs font-bold tracking-widest uppercase hover:opacity-90 transition-all">
-                    ✅ 儲存角色
-                  </button>
-                )}
+                <button onClick={addCharacter}
+  className="w-full py-3 bg-[#e8d5b0] text-[#0a0a0a] rounded-xl text-xs font-bold tracking-widest uppercase hover:opacity-90 transition-all">
+  ✅ 儲存角色
+</button>
               </div>
             </div>
           </div>
@@ -215,8 +213,12 @@ setError('')
           <div className="grid grid-cols-4 gap-5">
             {characters.map(char => (
               <div key={char.id} className="bg-[#111] border border-[#222] rounded-2xl overflow-hidden group">
-                <div className="aspect-[9/16] overflow-hidden relative">
-                  <img src={char.imageUrl} alt={char.name} className="w-full h-full object-cover" />
+                <div className="aspect-[9/16] overflow-hidden relative bg-[#0a0a0a] flex items-center justify-center">
+  {char.imageUrl ? (
+    <img src={char.imageUrl} alt={char.name} className="w-full h-full object-cover" />
+  ) : (
+    <div className="text-4xl opacity-20">👤</div>
+  )}
                   <button onClick={() => deleteCharacter(char.id)}
                     className="absolute top-3 right-3 w-8 h-8 bg-black/60 rounded-full text-xs text-red-400 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center">
                     ✕
