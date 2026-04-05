@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
 
 interface Scene {
   id: string
@@ -16,16 +17,29 @@ export default function Scenes() {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [uploadedImage, setUploadedImage] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    const saved = localStorage.getItem('soon_scenes')
-    if (saved) setScenes(JSON.parse(saved))
+    loadScenes()
   }, [])
 
-  function saveScenes(s: Scene[]) {
-    setScenes(s)
-    localStorage.setItem('soon_scenes', JSON.stringify(s))
+  async function loadScenes() {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('scenes')
+      .select('*')
+      .order('created_at', { ascending: true })
+    if (!error && data) {
+      setScenes(data.map(s => ({
+        id: s.id,
+        name: s.name,
+        description: s.description || '',
+        imageUrl: s.image_url || '',
+        createdAt: s.created_at,
+      })))
+    }
+    setLoading(false)
   }
 
   function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -36,25 +50,28 @@ export default function Scenes() {
     reader.readAsDataURL(file)
   }
 
-  function addScene() {
-    if (!name || !uploadedImage) { setError('請輸入名字同圖片'); return }
-    const newScene: Scene = {
+  async function addScene() {
+    if (!name || !uploadedImage) { setError('請輸入名字同上傳圖片'); return }
+    setError('')
+    const newScene = {
       id: Date.now().toString(),
       name,
       description,
-      imageUrl: uploadedImage,
-      createdAt: Date.now(),
+      image_url: uploadedImage,
+      created_at: Date.now(),
     }
-    saveScenes([...scenes, newScene])
+    const { error } = await supabase.from('scenes').insert(newScene)
+    if (error) { setError('儲存失敗：' + error.message); return }
+    await loadScenes()
     setName('')
     setDescription('')
     setUploadedImage(null)
     setShowAdd(false)
-    setError('')
   }
 
-  function deleteScene(id: string) {
-    saveScenes(scenes.filter(s => s.id !== id))
+  async function deleteScene(id: string) {
+    await supabase.from('scenes').delete().eq('id', id)
+    await loadScenes()
   }
 
   return (
@@ -121,7 +138,6 @@ export default function Scenes() {
                   <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                 </label>
               </div>
-
               <div className="flex flex-col gap-4">
                 <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-2">圖片預覽</div>
                 <div className="flex-1 bg-[#0a0a0a] border border-[#222] rounded-xl overflow-hidden flex items-center justify-center min-h-[200px]">
@@ -145,13 +161,15 @@ export default function Scenes() {
           </div>
         )}
 
-        {scenes.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="text-[#555] text-sm">載入中...</div>
+          </div>
+        ) : scenes.length === 0 ? (
           <div className="flex flex-col items-center justify-center min-h-[400px] gap-4 text-center">
             <div className="text-5xl opacity-20">🏠</div>
             <div className="text-2xl font-serif text-[#444] italic">場景庫係空嘅</div>
-            <div className="text-sm text-[#333] max-w-xs leading-relaxed">
-              上傳真實場景照片，生成每個 Shot 時保持同一個場景
-            </div>
+            <div className="text-sm text-[#333] max-w-xs leading-relaxed">上傳真實場景照片，生成每個 Shot 時保持同一個場景</div>
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-5">
