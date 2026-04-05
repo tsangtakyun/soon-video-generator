@@ -272,6 +272,7 @@ useEffect(() => {
             { label: '📝 劇本', href: 'https://script-generator-xi.vercel.app' },
             { label: '🎬 分鏡', href: 'https://soon-storyboard.vercel.app/storyboard' },
             { label: '👤 角色庫', href: '/characters' },
+      { label: '🏠 場景庫', href: '/scenes' },
           ].map(nav => (
             <a key={nav.href} href={nav.href}
               className="px-3 py-1.5 rounded-full text-xs border border-[#222] text-[#555] hover:text-[#e8d5b0] hover:border-[#e8d5b0] transition-all">
