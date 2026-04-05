@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { fal } from '@fal-ai/client'
 
 export async function POST(req: NextRequest) {
   try {
@@ -7,37 +8,30 @@ export async function POST(req: NextRequest) {
     const falApiKey = process.env.FAL_API_KEY
     if (!falApiKey) throw new Error('Missing FAL_API_KEY')
 
-    const resultRes = await fetch(
-      `https://queue.fal.run/fal-ai/kling-video/v3/pro/text-to-video/requests/${requestId}`,
-      { headers: { 'Authorization': `Key ${falApiKey}` } }
-    )
+    fal.config({ credentials: falApiKey })
 
-    console.log('HTTP status:', resultRes.status)
+    const status = await fal.queue.status('fal-ai/kling-video/v3/pro/text-to-video', {
+      requestId,
+      logs: false,
+    })
 
-    // 仲未完成時 fal.ai 返回非 200
-    if (!resultRes.ok) {
-      console.log('Not ready yet, status:', resultRes.status)
-      return NextResponse.json({ status: 'IN_PROGRESS' })
-    }
+    console.log('Status:', status.status)
 
-    const text = await resultRes.text()
-    console.log('Response text:', text.substring(0, 200))
+    if (status.status === 'COMPLETED') {
+      const result = await fal.queue.result('fal-ai/kling-video/v3/pro/text-to-video', {
+        requestId,
+      })
 
-    if (!text || text.trim() === '') {
-      return NextResponse.json({ status: 'IN_PROGRESS' })
-    }
+      const data = result.data as { video?: { url: string } }
+      console.log('Video URL:', data?.video?.url)
 
-    const resultData = JSON.parse(text)
-
-    if (resultData.video?.url) {
-      console.log('Video URL found:', resultData.video.url)
       return NextResponse.json({
         status: 'COMPLETED',
-        output: { video: { url: resultData.video.url } }
+        output: { video: { url: data?.video?.url } }
       })
     }
 
-    return NextResponse.json({ status: 'IN_PROGRESS' })
+    return NextResponse.json({ status: status.status })
 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error'
