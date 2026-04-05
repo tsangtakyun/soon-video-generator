@@ -4,19 +4,27 @@ export async function POST(req: NextRequest) {
   try {
     const { requestId, falApiKey } = await req.json()
 
-    const response = await fetch(`https://queue.fal.run/fal-ai/kling-video/v1.6/standard/text-to-video/requests/${requestId}`, {
+    const response = await fetch(`https://queue.fal.run/fal-ai/kling-video/v1.6/standard/text-to-video/requests/${requestId}/status`, {
       method: 'GET',
       headers: {
         'Authorization': `Key ${falApiKey}`,
       },
     })
 
-    if (!response.ok) {
-      const err = await response.json()
-      throw new Error(err.detail || 'fal.ai status check error')
+    const data = await response.json()
+    
+    if (data.status === 'COMPLETED') {
+      // 攞最終結果
+      const resultRes = await fetch(`https://queue.fal.run/fal-ai/kling-video/v1.6/standard/text-to-video/requests/${requestId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Key ${falApiKey}`,
+        },
+      })
+      const resultData = await resultRes.json()
+      return NextResponse.json({ status: 'COMPLETED', output: resultData })
     }
 
-    const data = await response.json()
     return NextResponse.json(data)
 
   } catch (error: unknown) {
