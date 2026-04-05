@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { fal } from '@fal-ai/client'
 
 export async function POST(req: NextRequest) {
   try {
@@ -8,17 +7,24 @@ export async function POST(req: NextRequest) {
     const falApiKey = process.env.FAL_API_KEY
     if (!falApiKey) throw new Error('Missing FAL_API_KEY')
 
-    fal.config({ credentials: falApiKey })
-
-    const { request_id } = await fal.queue.submit('fal-ai/kling-video/v1.6/standard/image-to-video', {
-      input: {
+    const response = await fetch('https://queue.fal.run/fal-ai/kling-video/v1.6/standard/image-to-video', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Key ${falApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
         prompt,
         image_url: imageUrl,
         duration: '5',
-      } as Record<string, unknown>,
+        aspect_ratio: '9:16',
+      }),
     })
 
-    return NextResponse.json({ request_id })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.detail || 'fal.ai error')
+
+    return NextResponse.json({ request_id: data.request_id })
 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error'
