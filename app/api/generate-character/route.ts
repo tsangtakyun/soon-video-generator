@@ -12,8 +12,8 @@ export async function POST(req: NextRequest) {
 
     const result = await fal.subscribe('fal-ai/flux/schnell', {
       input: {
-        prompt: `Portrait photo of ${description}, cinematic lighting, photorealistic, high quality, film still, 9:16 aspect ratio`,
-        image_size: 'portrait_9_16',
+        prompt: `Portrait photo of ${description}, cinematic lighting, photorealistic, high quality, film still`,
+        image_size: 'portrait_4_3' as const,
         num_images: 1,
       },
     })
