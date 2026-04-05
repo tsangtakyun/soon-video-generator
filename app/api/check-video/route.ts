@@ -7,29 +7,41 @@ export async function POST(req: NextRequest) {
     const falApiKey = process.env.FAL_API_KEY
     if (!falApiKey) throw new Error('Missing FAL_API_KEY')
 
-    // 直接攞結果
     const resultRes = await fetch(
       `https://queue.fal.run/fal-ai/kling-video/v3/pro/text-to-video/requests/${requestId}`,
       { headers: { 'Authorization': `Key ${falApiKey}` } }
     )
 
-    const resultData = await resultRes.json()
-    console.log('Result keys:', Object.keys(resultData))
-    console.log('Video:', JSON.stringify(resultData.video))
+    console.log('HTTP status:', resultRes.status)
+
+    // 仲未完成時 fal.ai 返回非 200
+    if (!resultRes.ok) {
+      console.log('Not ready yet, status:', resultRes.status)
+      return NextResponse.json({ status: 'IN_PROGRESS' })
+    }
+
+    const text = await resultRes.text()
+    console.log('Response text:', text.substring(0, 200))
+
+    if (!text || text.trim() === '') {
+      return NextResponse.json({ status: 'IN_PROGRESS' })
+    }
+
+    const resultData = JSON.parse(text)
 
     if (resultData.video?.url) {
+      console.log('Video URL found:', resultData.video.url)
       return NextResponse.json({
         status: 'COMPLETED',
         output: { video: { url: resultData.video.url } }
       })
     }
 
-    // 仲未完成
     return NextResponse.json({ status: 'IN_PROGRESS' })
 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error'
     console.error('Error:', message)
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ status: 'IN_PROGRESS' })
   }
 }
