@@ -1,43 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { fal } from '@fal-ai/client'
 
 export async function POST(req: NextRequest) {
   try {
     const { requestId } = await req.json()
+
     const falApiKey = process.env.FAL_API_KEY
     if (!falApiKey) throw new Error('Missing FAL_API_KEY')
 
-    // 先 check status
-    const statusRes = await fetch(
-      `https://queue.fal.run/fal-ai/kling-video/v1.6/standard/text-to-video/requests/${requestId}/status`,
-      { headers: { 'Authorization': `Key ${falApiKey}` } }
-    )
-    const statusText = await statusRes.text()
-    console.log('Status text:', statusText)
+    fal.config({ credentials: falApiKey })
 
-    if (!statusText || statusText.trim() === '') {
-      return NextResponse.json({ status: 'IN_PROGRESS' })
-    }
+    const status = await fal.queue.status('fal-ai/kling-video/v1.6/standard/text-to-video', {
+      requestId,
+      logs: false,
+    })
 
-    const statusData = JSON.parse(statusText)
-    console.log('Status:', statusData.status)
+    console.log('Status:', JSON.stringify(status))
 
-    if (statusData.status === 'COMPLETED') {
-      // 用 response_url 攞結果
-      const responseUrl = statusData.response_url
-      console.log('Response URL:', responseUrl)
-
-      if (!responseUrl) {
-        return NextResponse.json({ status: 'IN_PROGRESS' })
-      }
-
-      const resultRes = await fetch(responseUrl, {
-        headers: { 'Authorization': `Key ${falApiKey}` },
+    if (status.status === 'COMPLETED') {
+      const result = await fal.queue.result('fal-ai/kling-video/v1.6/standard/text-to-video', {
+        requestId,
       })
-      const resultText = await resultRes.text()
-      console.log('Result:', resultText.substring(0, 300))
 
-      const resultData = JSON.parse(resultText)
-      const videoUrl = resultData.video?.url || resultData.videos?.[0]?.url
+      console.log('Result:', JSON.stringify(result.data).substring(0, 300))
+
+      const data = result.data as { video?: { url: string } }
+      const videoUrl = data?.video?.url
 
       return NextResponse.json({
         status: 'COMPLETED',
@@ -45,11 +33,7 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    if (statusData.status === 'IN_QUEUE' || statusData.status === 'IN_PROGRESS') {
-      return NextResponse.json({ status: 'IN_PROGRESS' })
-    }
-
-    return NextResponse.json({ status: statusData.status || 'IN_PROGRESS' })
+    return NextResponse.json({ status: status.status })
 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error'
