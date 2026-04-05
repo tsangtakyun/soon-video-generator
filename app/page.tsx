@@ -440,7 +440,7 @@ export default function Home() {
                           <div className="relative">
                             <button onClick={() => setShowCharPicker(showCharPicker === i ? null : i)}
                               className="w-full py-2 border border-dashed border-[#333] rounded-xl text-xs text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all">
-                              👤 {characters.length > 0 ? '指定角色（可選）' : '先去角色庫新增角色'}
+                              👤 {characters.length > 0 ? '指定角色（可選）' : '指定角色（可選）'}
                             </button>
                             {showCharPicker === i && characters.length > 0 && (
                               <div className="absolute top-full left-0 right-0 mt-2 bg-[#1a1a1a] border border-[#333] rounded-xl overflow-hidden z-10">
