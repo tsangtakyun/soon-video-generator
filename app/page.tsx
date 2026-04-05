@@ -45,6 +45,7 @@ export default function Home() {
   const [preset, setPreset] = useState('ep1')
   const [copied, setCopied] = useState<number | null>(null)
   const [copiedAll, setCopiedAll] = useState(false)
+  const [fetchingResult, setFetchingResult] = useState<number | null>(null)
 
   function setPresetStyle(type: string) {
     setPreset(type)
@@ -100,37 +101,11 @@ export default function Home() {
       if (data.error) throw new Error(data.error)
 
       const requestId = data.request_id
-      updated[index] = { ...updated[index], requestId }
-      setShots([...updated])
-
-      let attempts = 0
-      const poll = async () => {
-        attempts++
-        if (attempts > 60) throw new Error('生成逾時')
-
-        const checkRes = await fetch('/api/check-video', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requestId }),
-        })
-
-        const checkData = await checkRes.json()
-
-        if (checkData.status === 'COMPLETED') {
-          const videoUrl = checkData.output?.video?.url || checkData.output?.videos?.[0]?.url
-          setShots(prev => {
-            const newShots = [...prev]
-            newShots[index] = { ...newShots[index], videoStatus: 'done', videoUrl }
-            return newShots
-          })
-        } else if (checkData.status === 'FAILED') {
-          throw new Error('影片生成失敗')
-        } else {
-          setTimeout(poll, 5000)
-        }
-      }
-
-      await poll()
+      setShots(prev => {
+        const newShots = [...prev]
+        newShots[index] = { ...newShots[index], requestId, videoStatus: 'generating' }
+        return newShots
+      })
 
     } catch (err: unknown) {
       setShots(prev => {
@@ -139,6 +114,40 @@ export default function Home() {
         return newShots
       })
       setError(err instanceof Error ? err.message : '影片生成失敗')
+    }
+  }
+
+  async function fetchResult(index: number) {
+    const shot = shots[index]
+    if (!shot.requestId) return
+
+    setFetchingResult(index)
+
+    try {
+      const res = await fetch('/api/check-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId: shot.requestId }),
+      })
+
+      const data = await res.json()
+
+      if (data.status === 'COMPLETED') {
+        const videoUrl = data.output?.video?.url || data.output?.videos?.[0]?.url
+        setShots(prev => {
+          const newShots = [...prev]
+          newShots[index] = { ...newShots[index], videoStatus: 'done', videoUrl }
+          return newShots
+        })
+      } else if (data.status === 'IN_QUEUE' || data.status === 'IN_PROGRESS') {
+        setError(`Shot ${shot.number} 仍然生成緊，請等多一陣再查詢`)
+      } else {
+        setError(`狀態：${data.status || '未知'}，請重試`)
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '查詢失敗')
+    } finally {
+      setFetchingResult(null)
     }
   }
 
@@ -158,7 +167,6 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#e8e8e8] font-sans">
 
-      {/* Header */}
       <header className="border-b border-[#222] px-8 py-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="text-xl font-serif text-[#e8d5b0] tracking-wide">SOON</span>
@@ -181,10 +189,8 @@ export default function Home() {
 
       <div className="grid grid-cols-[360px_1fr] min-h-[calc(100vh-73px)]">
 
-        {/* LEFT PANEL */}
         <div className="border-r border-[#222] p-8 flex flex-col gap-6 overflow-y-auto">
 
-          {/* Scene */}
           <div className="bg-[#111] border border-[#222] rounded-xl p-5">
             <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-3">場景描述</div>
             <textarea
@@ -196,7 +202,6 @@ export default function Home() {
             />
           </div>
 
-          {/* Style JSON */}
           <div className="bg-[#111] border border-[#222] rounded-xl p-5">
             <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-3">風格 JSON</div>
             <div className="flex gap-2 mb-3">
@@ -219,7 +224,6 @@ export default function Home() {
             />
           </div>
 
-          {/* Shot Count */}
           <div className="bg-[#111] border border-[#222] rounded-xl p-5">
             <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-3">鏡頭數量</div>
             <div className="flex items-center gap-4">
@@ -232,7 +236,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Generate Button */}
           <button onClick={generatePrompts} disabled={generating}
             className="w-full py-4 bg-[#e8d5b0] text-[#0a0a0a] rounded-xl font-bold text-sm tracking-widest uppercase hover:opacity-90 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
             {generating ? '⏳ Claude 生成中...' : '🎬 生成 Kling Prompts'}
@@ -240,7 +243,6 @@ export default function Home() {
 
         </div>
 
-        {/* RIGHT PANEL */}
         <div className="p-8 overflow-y-auto">
           <div className="flex items-center justify-between mb-8">
             <h1 className="text-3xl font-serif text-[#e8d5b0] italic">生成結果</h1>
@@ -253,7 +255,10 @@ export default function Home() {
           </div>
 
           {error && (
-            <div className="bg-red-900/20 border border-red-800/40 rounded-xl px-5 py-4 text-sm text-red-400 mb-6">{error}</div>
+            <div className="bg-red-900/20 border border-red-800/40 rounded-xl px-5 py-4 text-sm text-red-400 mb-6">
+              {error}
+              <button onClick={() => setError('')} className="ml-3 underline text-xs">關閉</button>
+            </div>
           )}
 
           {shots.length === 0 && !generating && (
@@ -281,6 +286,7 @@ export default function Home() {
               <div className="flex flex-col gap-5">
                 {shots.map((shot, i) => (
                   <div key={i} className="bg-[#111] border border-[#222] rounded-2xl overflow-hidden">
+
                     <div className="flex items-center justify-between px-5 py-4 border-b border-[#222]">
                       <div className="flex items-center gap-3">
                         <span className="bg-[#e8d5b0] text-[#0a0a0a] text-xs font-bold px-3 py-1 rounded-full font-mono">Shot {shot.number}</span>
@@ -297,31 +303,51 @@ export default function Home() {
                       <p className="font-mono text-xs text-green-400 leading-relaxed">{shot.prompt}</p>
                     </div>
 
-                    <div className="px-5 pb-5">
+                    <div className="px-5 pb-5 flex flex-col gap-3">
                       {shot.videoStatus === 'idle' && (
                         <button onClick={() => generateVideo(i)}
                           className="w-full py-3 border border-[#222] rounded-xl text-xs font-bold tracking-widest uppercase text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all">
                           🎥 一鍵生成影片
                         </button>
                       )}
+
                       {shot.videoStatus === 'generating' && (
-                        <div className="w-full py-3 border border-[#e8d5b0]/30 rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0]/50 text-center animate-pulse">
-                          ⏳ 影片生成中... 約需 2-3 分鐘
-                        </div>
+                        <>
+                          <div className="w-full py-3 border border-[#e8d5b0]/30 rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0]/50 text-center animate-pulse">
+                            ⏳ 生成中... 約需 3 分鐘，生成完撳下面按鈕
+                          </div>
+                          <button onClick={() => fetchResult(i)}
+                            disabled={fetchingResult === i}
+                            className="w-full py-3 bg-[#1a1a1a] border border-[#e8d5b0] rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0] hover:bg-[#e8d5b0] hover:text-[#0a0a0a] transition-all disabled:opacity-50">
+                            {fetchingResult === i ? '🔍 查詢中...' : '🔍 查詢影片結果'}
+                          </button>
+                          {shot.requestId && (
+                            <div className="text-[10px] text-[#333] font-mono text-center">
+                              Request ID: {shot.requestId}
+                            </div>
+                          )}
+                        </>
                       )}
+
                       {shot.videoStatus === 'done' && shot.videoUrl && (
                         <div className="space-y-3">
-                          <video src={shot.videoUrl} controls className="w-full rounded-xl max-h-[400px]" />
-                          <a href={shot.videoUrl} download
+                          <video src={shot.videoUrl} controls className="w-full rounded-xl max-h-[500px]" />
+                          <a href={shot.videoUrl} download target="_blank" rel="noreferrer"
                             className="block w-full py-2.5 bg-[#e8d5b0] text-[#0a0a0a] rounded-xl text-xs font-bold tracking-widest uppercase text-center hover:opacity-90 transition-all">
                             ⬇️ 下載影片
                           </a>
                         </div>
                       )}
+
                       {shot.videoStatus === 'error' && (
-                        <div className="w-full py-3 border border-red-800/40 rounded-xl text-xs text-red-400 text-center">
-                          生成失敗，請重試
-                          <button onClick={() => generateVideo(i)} className="ml-3 underline">重試</button>
+                        <div className="flex flex-col gap-2">
+                          <div className="w-full py-3 border border-red-800/40 rounded-xl text-xs text-red-400 text-center">
+                            生成失敗
+                          </div>
+                          <button onClick={() => generateVideo(i)}
+                            className="w-full py-2.5 border border-[#222] rounded-xl text-xs text-[#555] hover:text-[#e8d5b0] hover:border-[#e8d5b0] transition-all">
+                            重試
+                          </button>
                         </div>
                       )}
                     </div>
@@ -333,6 +359,7 @@ export default function Home() {
                         </div>
                       ))}
                     </div>
+
                   </div>
                 ))}
               </div>
