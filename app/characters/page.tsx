@@ -6,6 +6,7 @@ interface Character {
   id: string
   name: string
   description: string
+  appearanceJson: string
   imageUrl: string
   createdAt: number
 }
@@ -18,6 +19,7 @@ export default function Characters() {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState('')
+  const [appearanceJson, setAppearanceJson] = useState('')
 
   useEffect(() => {
     const saved = localStorage.getItem('soon_characters')
@@ -60,18 +62,20 @@ export default function Characters() {
   function addCharacter() {
     if (!name || !uploadedImage) { setError('請輸入名字同圖片'); return }
     const newChar: Character = {
-      id: Date.now().toString(),
-      name,
-      description,
-      imageUrl: uploadedImage,
-      createdAt: Date.now(),
-    }
+  id: Date.now().toString(),
+  name,
+  description,
+  appearanceJson,
+  imageUrl: uploadedImage,
+  createdAt: Date.now(),
+}
     saveCharacters([...characters, newChar])
     setName('')
-    setDescription('')
-    setUploadedImage(null)
-    setShowAdd(false)
-    setError('')
+setDescription('')
+setAppearanceJson('')
+setUploadedImage(null)
+setShowAdd(false)
+setError('')
   }
 
   function deleteCharacter(id: string) {
@@ -143,6 +147,25 @@ export default function Characters() {
                   />
                 </div>
 
+                <div>
+  <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-2">
+    外貌 JSON（鎖定角色樣子）
+  </div>
+  <textarea
+    value={appearanceJson}
+    onChange={e => setAppearanceJson(e.target.value)}
+    placeholder={`{
+  "hair": "short bob, dark brown",
+  "face": "delicate features, natural makeup",
+  "outfit": "beige knit sweater",
+  "body": "slender, 165cm",
+  "skin": "fair, natural tone"
+}`}
+    rows={6}
+    className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2.5 text-xs font-mono text-green-400 outline-none focus:border-[#e8d5b0] transition-colors resize-none"
+  />
+</div>
+                
                 <div className="flex gap-3">
                   <button onClick={generateCharacterImage} disabled={generating}
                     className="flex-1 py-2.5 border border-[#e8d5b0] rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0] hover:bg-[#e8d5b0] hover:text-[#0a0a0a] transition-all disabled:opacity-40">
