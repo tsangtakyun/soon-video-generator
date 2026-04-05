@@ -3,7 +3,10 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(req: NextRequest) {
   try {
-    const { scene, styleJson, shotCount, apiKey } = await req.json()
+    const { scene, styleJson, shotCount } = await req.json()
+
+    const apiKey = process.env.ANTHROPIC_API_KEY
+    if (!apiKey) throw new Error('Missing ANTHROPIC_API_KEY')
 
     const client = new Anthropic({ apiKey })
 
