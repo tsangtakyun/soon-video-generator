@@ -11,8 +11,22 @@ export async function POST(req: NextRequest) {
     const client = new Anthropic({ apiKey })
 
     const characterDesc = characters && characters.length > 0
-      ? `\n\n角色描述（每個 prompt 都必須包含）：\n${characters.map((c: { name: string; description: string }) => `- ${c.name}：${c.description}`).join('\n')}`
-      : ''
+  ? `\n\n角色描述（每個 prompt 都必須包含）：\n${characters.map((c: { name: string; description: string; appearanceJson?: string }) => {
+      let desc = `- ${c.name}：${c.description}`
+      if (c.appearanceJson) {
+        try {
+          const appearance = JSON.parse(c.appearanceJson)
+          const appearanceStr = Object.entries(appearance)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(', ')
+          desc += ` | 外貌：${appearanceStr}`
+        } catch {
+          // JSON 格式有問題，忽略
+        }
+      }
+      return desc
+    }).join('\n')}`
+  : ''
 
     const sceneDesc = sceneRef
       ? `\n\n場景參考：${sceneRef.name}${sceneRef.description ? ` — ${sceneRef.description}` : ''}（每個 prompt 都必須保持呢個場景設定）`
