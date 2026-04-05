@@ -36,8 +36,6 @@ interface Shot {
 }
 
 export default function Home() {
-  const [claudeKey, setClaudeKey] = useState('')
-  const [falKey, setFalKey] = useState('')
   const [scene, setScene] = useState('')
   const [styleJson, setStyleJson] = useState(JSON.stringify(EP1_JSON, null, 2))
   const [shotCount, setShotCount] = useState(6)
@@ -55,8 +53,8 @@ export default function Home() {
   }
 
   async function generatePrompts() {
-    if (!claudeKey || !scene) {
-      setError('請輸入 Claude API Key 同場景描述')
+    if (!scene) {
+      setError('請輸入場景描述')
       return
     }
     setError('')
@@ -71,7 +69,7 @@ export default function Home() {
       const res = await fetch('/api/generate-prompts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scene, styleJson: parsed, shotCount, apiKey: claudeKey }),
+        body: JSON.stringify({ scene, styleJson: parsed, shotCount }),
       })
 
       const data = await res.json()
@@ -86,11 +84,6 @@ export default function Home() {
   }
 
   async function generateVideo(index: number) {
-    if (!falKey) {
-      setError('請輸入 fal.ai API Key 先生成影片')
-      return
-    }
-
     const shot = shots[index]
     const updated = [...shots]
     updated[index] = { ...shot, videoStatus: 'generating' }
@@ -100,7 +93,7 @@ export default function Home() {
       const res = await fetch('/api/generate-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: shot.prompt, falApiKey: falKey }),
+        body: JSON.stringify({ prompt: shot.prompt }),
       })
 
       const data = await res.json()
@@ -110,7 +103,6 @@ export default function Home() {
       updated[index] = { ...updated[index], requestId }
       setShots([...updated])
 
-      // Poll for result
       let attempts = 0
       const poll = async () => {
         attempts++
@@ -119,16 +111,18 @@ export default function Home() {
         const checkRes = await fetch('/api/check-video', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requestId, falApiKey: falKey }),
+          body: JSON.stringify({ requestId }),
         })
 
         const checkData = await checkRes.json()
 
         if (checkData.status === 'COMPLETED') {
-          const videoUrl = checkData.output?.video?.url
-          const newShots = [...shots]
-          newShots[index] = { ...newShots[index], videoStatus: 'done', videoUrl }
-          setShots(newShots)
+          const videoUrl = checkData.output?.video?.url || checkData.output?.videos?.[0]?.url
+          setShots(prev => {
+            const newShots = [...prev]
+            newShots[index] = { ...newShots[index], videoStatus: 'done', videoUrl }
+            return newShots
+          })
         } else if (checkData.status === 'FAILED') {
           throw new Error('影片生成失敗')
         } else {
@@ -139,9 +133,11 @@ export default function Home() {
       await poll()
 
     } catch (err: unknown) {
-      const newShots = [...shots]
-      newShots[index] = { ...newShots[index], videoStatus: 'error' }
-      setShots(newShots)
+      setShots(prev => {
+        const newShots = [...prev]
+        newShots[index] = { ...newShots[index], videoStatus: 'error' }
+        return newShots
+      })
       setError(err instanceof Error ? err.message : '影片生成失敗')
     }
   }
@@ -188,42 +184,6 @@ export default function Home() {
         {/* LEFT PANEL */}
         <div className="border-r border-[#222] p-8 flex flex-col gap-6 overflow-y-auto">
 
-          {/* Claude Key */}
-          <div className="bg-[#111] border border-[#222] rounded-xl p-5">
-            <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-3">Claude API Key</div>
-            <input
-              type="password"
-              value={claudeKey}
-              onChange={e => setClaudeKey(e.target.value)}
-              placeholder="sk-ant-api03-..."
-              className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2.5 text-xs font-mono text-[#e8e8e8] outline-none focus:border-[#e8d5b0] transition-colors"
-            />
-            <div className="flex items-center gap-2 mt-2">
-              <div className={`w-1.5 h-1.5 rounded-full ${claudeKey.startsWith('sk-ant-') ? 'bg-green-400' : 'bg-[#333]'}`} />
-              <span className="text-[11px] text-[#555]">
-                {claudeKey.startsWith('sk-ant-') ? 'API Key 已就緒' : '輸入 API Key 開始'}
-              </span>
-            </div>
-          </div>
-
-          {/* fal.ai Key */}
-          <div className="bg-[#111] border border-[#222] rounded-xl p-5">
-            <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-3">fal.ai API Key <span className="text-[#c0392b]">（生成影片用）</span></div>
-            <input
-              type="password"
-              value={falKey}
-              onChange={e => setFalKey(e.target.value)}
-              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-              className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2.5 text-xs font-mono text-[#e8e8e8] outline-none focus:border-[#e8d5b0] transition-colors"
-            />
-            <div className="flex items-center gap-2 mt-2">
-              <div className={`w-1.5 h-1.5 rounded-full ${falKey.length > 10 ? 'bg-green-400' : 'bg-[#333]'}`} />
-              <span className="text-[11px] text-[#555]">
-                {falKey.length > 10 ? 'fal.ai Key 已就緒' : '輸入 Key 啟用影片生成'}
-              </span>
-            </div>
-          </div>
-
           {/* Scene */}
           <div className="bg-[#111] border border-[#222] rounded-xl p-5">
             <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-3">場景描述</div>
@@ -231,7 +191,7 @@ export default function Home() {
               value={scene}
               onChange={e => setScene(e.target.value)}
               placeholder="例如：臥室前，夜晚。Mia 冷冷地執嘢，阿俊靠牆站，唔敢出聲..."
-              rows={5}
+              rows={6}
               className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#e8d5b0] transition-colors resize-none leading-relaxed placeholder:text-[#333]"
             />
           </div>
@@ -306,7 +266,6 @@ export default function Home() {
 
           {shots.length > 0 && (
             <>
-              {/* Kling Settings */}
               <div className="bg-[#111] border border-[#222] rounded-xl px-6 py-4 mb-6">
                 <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-3">Kling 設定（每個 Shot 統一使用）</div>
                 <div className="flex gap-8">
@@ -319,12 +278,9 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Shot Cards */}
               <div className="flex flex-col gap-5">
                 {shots.map((shot, i) => (
                   <div key={i} className="bg-[#111] border border-[#222] rounded-2xl overflow-hidden">
-
-                    {/* Card Header */}
                     <div className="flex items-center justify-between px-5 py-4 border-b border-[#222]">
                       <div className="flex items-center gap-3">
                         <span className="bg-[#e8d5b0] text-[#0a0a0a] text-xs font-bold px-3 py-1 rounded-full font-mono">Shot {shot.number}</span>
@@ -337,18 +293,15 @@ export default function Home() {
                       </button>
                     </div>
 
-                    {/* Prompt */}
                     <div className="px-5 py-4">
                       <p className="font-mono text-xs text-green-400 leading-relaxed">{shot.prompt}</p>
                     </div>
 
-                    {/* Video Section */}
                     <div className="px-5 pb-5">
                       {shot.videoStatus === 'idle' && (
                         <button onClick={() => generateVideo(i)}
-                          disabled={!falKey}
-                          className="w-full py-3 border border-[#222] rounded-xl text-xs font-bold tracking-widest uppercase text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all disabled:opacity-30 disabled:cursor-not-allowed">
-                          {falKey ? '🎥 一鍵生成影片' : '輸入 fal.ai Key 先生成影片'}
+                          className="w-full py-3 border border-[#222] rounded-xl text-xs font-bold tracking-widest uppercase text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all">
+                          🎥 一鍵生成影片
                         </button>
                       )}
                       {shot.videoStatus === 'generating' && (
@@ -373,7 +326,6 @@ export default function Home() {
                       )}
                     </div>
 
-                    {/* Footer */}
                     <div className="px-5 py-3 border-t border-[#222] bg-[#0a0a0a] flex gap-6">
                       {[['Camera', shot.camera_setting], ['Duration', '5s'], ['Ratio', '9:16'], ['Mode', '720p']].map(([k, v]) => (
                         <div key={k} className="text-[11px] text-[#333] font-mono">
@@ -381,7 +333,6 @@ export default function Home() {
                         </div>
                       ))}
                     </div>
-
                   </div>
                 ))}
               </div>
