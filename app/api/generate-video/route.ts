@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, falApiKey } = await req.json()
+    const { prompt } = await req.json()
+
+    const falApiKey = process.env.FAL_API_KEY
+    if (!falApiKey) throw new Error('Missing FAL_API_KEY')
 
     const response = await fetch('https://queue.fal.run/fal-ai/kling-video/v1.6/standard/text-to-video', {
       method: 'POST',
