@@ -10,22 +10,27 @@ export async function POST(req: NextRequest) {
 
     fal.config({ credentials: falApiKey })
 
-    const status = await fal.queue.status('fal-ai/kling-video/v1.6/standard/text-to-video', {
-      requestId,
-      logs: false,
-    })
+    const statusRes = await fetch(
+      `https://queue.fal.run/fal-ai/kling-video/v3/pro/text-to-video/requests/${requestId}/status`,
+      { headers: { 'Authorization': `Key ${falApiKey}` } }
+    )
 
-    console.log('Status:', JSON.stringify(status))
+    const statusText = await statusRes.text()
+    if (!statusText || statusText.trim() === '') {
+      return NextResponse.json({ status: 'IN_PROGRESS' })
+    }
 
-    if (status.status === 'COMPLETED') {
-      const result = await fal.queue.result('fal-ai/kling-video/v1.6/standard/text-to-video', {
-        requestId,
+    const statusData = JSON.parse(statusText)
+
+    if (statusData.status === 'COMPLETED') {
+      const responseUrl = statusData.response_url
+      if (!responseUrl) return NextResponse.json({ status: 'IN_PROGRESS' })
+
+      const resultRes = await fetch(responseUrl, {
+        headers: { 'Authorization': `Key ${falApiKey}` },
       })
-
-      console.log('Result:', JSON.stringify(result.data).substring(0, 300))
-
-      const data = result.data as { video?: { url: string } }
-      const videoUrl = data?.video?.url
+      const resultData = await resultRes.json()
+      const videoUrl = resultData.video?.url || resultData.videos?.[0]?.url
 
       return NextResponse.json({
         status: 'COMPLETED',
@@ -33,11 +38,14 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    return NextResponse.json({ status: status.status })
+    if (statusData.status === 'IN_QUEUE' || statusData.status === 'IN_PROGRESS') {
+      return NextResponse.json({ status: 'IN_PROGRESS' })
+    }
+
+    return NextResponse.json({ status: statusData.status || 'IN_PROGRESS' })
 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error'
-    console.error('Error:', message)
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
