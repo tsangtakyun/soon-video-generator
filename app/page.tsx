@@ -2,27 +2,104 @@
 
 import { useState } from 'react'
 
-const EP1_JSON = {
-  color_grade: "warm amber, slight desaturation, film grain",
-  lighting: "practical warm light, soft shadows, window side light",
-  camera_movement: "handheld slight shake",
-  lens: "35mm equivalent, shallow depth of field, soft bokeh",
-  composition: "subject slightly off-center, negative space",
-  mood: "cold, detached on surface, underlying tension",
-  aspect_ratio: "9:16",
-  style_reference: "cinematic Korean drama, quiet emotional realism"
-}
-
-const EP2_JSON = {
-  color_grade: "cool blue, low contrast, desaturated grey tones",
-  lighting: "top light or side light, strong facial shadows",
-  camera_movement: "static, occasional slow push in",
-  lens: "50mm, slightly distant, isolating subject",
-  composition: "subject centered but overwhelmed by negative space",
-  mood: "suppressed, patient, unheard silence",
-  aspect_ratio: "9:16",
-  style_reference: "minimalist Asian arthouse, like Wong Kar-wai"
-}
+const PRESETS = [
+  {
+    key: 'korean',
+    emoji: '🇰🇷',
+    name: '韓劇',
+    desc: '眼神情感，奶油 bokeh',
+    json: {
+      color_grade: "natural skin tone, soft warm tint, light desaturation, no heavy filter",
+      lighting: "diffused natural daylight or soft window light, minimal shadows, clean and bright",
+      camera_movement: "subtle handheld or static, occasional slow zoom on face",
+      lens: "85mm to 135mm telephoto, very shallow depth of field, creamy bokeh background",
+      composition: "subject centered or slightly off-center, emphasis on facial expression and eyes",
+      mood: "restrained emotion, quiet intensity, beautiful sadness beneath calm surface",
+      aspect_ratio: "9:16",
+      style_reference: "Korean drama cinematography, like Queen of Tears or My Mister, emotionally grounded realism"
+    }
+  },
+  {
+    key: 'hollywood',
+    emoji: '🎬',
+    name: '荷里活',
+    desc: '高張力，冷藍專業感',
+    json: {
+      color_grade: "cool desaturated tones, cinematic blue-grey LUT, high contrast shadows",
+      lighting: "directional artificial lighting, motivated light sources, layered depth with rim lighting",
+      camera_movement: "purposeful tracking shots, steady cam walk-and-talk, occasional wide establishing",
+      lens: "24mm to 50mm, moderate depth of field, sharp foreground and background both visible",
+      composition: "symmetrical corridors, centered authority figures, environmental storytelling in frame",
+      mood: "high stakes tension, institutional power, everyone has an agenda",
+      aspect_ratio: "9:16",
+      style_reference: "Netflix prestige drama cinematography, cold professional realism, like Designated Survivor or The Crown"
+    }
+  },
+  {
+    key: 'thriller',
+    emoji: '😱',
+    name: '驚悚',
+    desc: '黑暗壓迫，霓虹恐懼',
+    json: {
+      color_grade: "deep shadow crush, cold blue-green tint, heavy vignette, crushed blacks with no lifted shadows",
+      lighting: "single motivated light source only — neon, wall lamp or moonlight — face partially lit, rest in darkness",
+      camera_movement: "static and oppressive, very slow push in, no handheld shake",
+      lens: "50mm, sharp center with heavy vignette edges, subject trapped in frame",
+      composition: "subject centered and surrounded by darkness, large negative space filled with black",
+      mood: "dread, trapped, something is wrong but undefined, psychological unease",
+      aspect_ratio: "9:16",
+      style_reference: "European psychological thriller, dark atmospheric horror, like La Casa or Marianne, neon-noir darkness"
+    }
+  },
+  {
+    key: 'japanese',
+    emoji: '🎌',
+    name: '日系',
+    desc: '青春自然，夏日紀錄片',
+    json: {
+      color_grade: "natural slightly overexposed, true-to-life colors, soft summer haze, no heavy grading",
+      lighting: "100% natural daylight, outdoor scattered light or direct sun, no artificial fill",
+      camera_movement: "observational handheld, documentary feel, camera follows action naturally",
+      lens: "35mm to 50mm, medium depth of field, environment and character equally important",
+      composition: "unforced framing, subject integrated into environment, imperfect and alive",
+      mood: "youth, spontaneity, genuine emotion, beautiful imperfection",
+      aspect_ratio: "9:16",
+      style_reference: "Japanese live-action film, summer youth drama, naturalistic like Solanin or Tokyo Story"
+    }
+  },
+  {
+    key: 'wongkarwai',
+    emoji: '🏙️',
+    name: '香港文藝',
+    desc: '王家衛，橙紅慾望',
+    json: {
+      color_grade: "heavy warm amber and orange grade, high saturation, film grain, intentional color bleeding, vintage Kodak film look",
+      lighting: "neon signs, street lamps, single warm practical lights, strong contrast between lit and unlit areas, no clean fill light",
+      camera_movement: "slow motion moments, step-printed frames, sudden handheld intimacy, long static holds",
+      lens: "mixed wide and telephoto, deliberate foreground obstruction — shooting through objects, windows, mirrors, curtains",
+      composition: "unconventional framing, partial faces, reflections doubling subjects, negative space charged with longing",
+      mood: "repressed desire, time dissolving, loneliness in proximity, what cannot be said",
+      aspect_ratio: "9:16",
+      style_reference: "Wong Kar-wai cinematography, In the Mood for Love, Chungking Express, Christopher Doyle visual language"
+    }
+  },
+  {
+    key: 'hkrealist',
+    emoji: '🥢',
+    name: '港式寫實',
+    desc: '彭浩翔，城市日常',
+    json: {
+      color_grade: "natural cool-neutral tones, slight desaturation, realistic Hong Kong street look, no cinematic grade",
+      lighting: "available natural light, fluorescent interior lighting, no dramatic shadows",
+      camera_movement: "casual observational handheld, sometimes static, feels accidental and real",
+      lens: "50mm standard lens, natural perspective, medium depth of field",
+      composition: "characters embedded in real Hong Kong environments — cha chaan teng, alleyways, tiny apartments",
+      mood: "urban irony, relationship absurdity, city loneliness disguised as comedy",
+      aspect_ratio: "9:16",
+      style_reference: "Pang Ho-cheung Hong Kong urban comedy-drama, Isabella, Love in a Puff, naturalistic city realism"
+    }
+  }
+]
 
 interface Shot {
   number: number
@@ -37,45 +114,44 @@ interface Shot {
 
 export default function Home() {
   const [scene, setScene] = useState('')
-  const [styleJson, setStyleJson] = useState(JSON.stringify(EP1_JSON, null, 2))
+  const [selectedPreset, setSelectedPreset] = useState(PRESETS[0])
+  const [customJson, setCustomJson] = useState('')
+  const [isCustom, setIsCustom] = useState(false)
   const [shotCount, setShotCount] = useState(6)
   const [shots, setShots] = useState<Shot[]>([])
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState('')
-  const [preset, setPreset] = useState('ep1')
   const [copied, setCopied] = useState<number | null>(null)
   const [copiedAll, setCopiedAll] = useState(false)
   const [fetchingResult, setFetchingResult] = useState<number | null>(null)
 
-  function setPresetStyle(type: string) {
-    setPreset(type)
-    if (type === 'ep1') setStyleJson(JSON.stringify(EP1_JSON, null, 2))
-    if (type === 'ep2') setStyleJson(JSON.stringify(EP2_JSON, null, 2))
+  function selectPreset(preset: typeof PRESETS[0]) {
+    setSelectedPreset(preset)
+    setIsCustom(false)
+    setCustomJson('')
+  }
+
+  function getActiveJson() {
+    if (isCustom) {
+      try { return JSON.parse(customJson) } catch { return selectedPreset.json }
+    }
+    return selectedPreset.json
   }
 
   async function generatePrompts() {
-    if (!scene) {
-      setError('請輸入場景描述')
-      return
-    }
+    if (!scene) { setError('請輸入場景描述'); return }
     setError('')
     setGenerating(true)
     setShots([])
 
     try {
-      let parsed
-      try { parsed = JSON.parse(styleJson) }
-      catch { throw new Error('JSON 格式有問題') }
-
       const res = await fetch('/api/generate-prompts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scene, styleJson: parsed, shotCount }),
+        body: JSON.stringify({ scene, styleJson: getActiveJson(), shotCount }),
       })
-
       const data = await res.json()
       if (data.error) throw new Error(data.error)
-
       setShots(data.shots.map((s: Shot) => ({ ...s, videoStatus: 'idle' })))
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '生成失敗')
@@ -86,9 +162,7 @@ export default function Home() {
 
   async function generateVideo(index: number) {
     const shot = shots[index]
-    const updated = [...shots]
-    updated[index] = { ...shot, videoStatus: 'generating' }
-    setShots(updated)
+    setShots(prev => { const n = [...prev]; n[index] = { ...n[index], videoStatus: 'generating' }; return n })
 
     try {
       const res = await fetch('/api/generate-video', {
@@ -96,23 +170,11 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: shot.prompt }),
       })
-
       const data = await res.json()
       if (data.error) throw new Error(data.error)
-
-      const requestId = data.request_id
-      setShots(prev => {
-        const newShots = [...prev]
-        newShots[index] = { ...newShots[index], requestId, videoStatus: 'generating' }
-        return newShots
-      })
-
+      setShots(prev => { const n = [...prev]; n[index] = { ...n[index], requestId: data.request_id }; return n })
     } catch (err: unknown) {
-      setShots(prev => {
-        const newShots = [...prev]
-        newShots[index] = { ...newShots[index], videoStatus: 'error' }
-        return newShots
-      })
+      setShots(prev => { const n = [...prev]; n[index] = { ...n[index], videoStatus: 'error' }; return n })
       setError(err instanceof Error ? err.message : '影片生成失敗')
     }
   }
@@ -120,7 +182,6 @@ export default function Home() {
   async function fetchResult(index: number) {
     const shot = shots[index]
     if (!shot.requestId) return
-
     setFetchingResult(index)
 
     try {
@@ -129,16 +190,11 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ requestId: shot.requestId }),
       })
-
       const data = await res.json()
 
       if (data.status === 'COMPLETED') {
-        const videoUrl = data.output?.video?.url || data.output?.videos?.[0]?.url
-        setShots(prev => {
-          const newShots = [...prev]
-          newShots[index] = { ...newShots[index], videoStatus: 'done', videoUrl }
-          return newShots
-        })
+        const videoUrl = data.output?.video?.url
+        setShots(prev => { const n = [...prev]; n[index] = { ...n[index], videoStatus: 'done', videoUrl }; return n })
       } else if (data.status === 'IN_QUEUE' || data.status === 'IN_PROGRESS') {
         setError(`Shot ${shot.number} 仍然生成緊，請等多一陣再查詢`)
       } else {
@@ -187,51 +243,85 @@ export default function Home() {
         </nav>
       </header>
 
-      <div className="grid grid-cols-[360px_1fr] min-h-[calc(100vh-73px)]">
+      <div className="grid grid-cols-[400px_1fr] min-h-[calc(100vh-73px)]">
 
+        {/* LEFT */}
         <div className="border-r border-[#222] p-8 flex flex-col gap-6 overflow-y-auto">
 
+          {/* Scene */}
           <div className="bg-[#111] border border-[#222] rounded-xl p-5">
             <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-3">場景描述</div>
-            <textarea
-              value={scene}
-              onChange={e => setScene(e.target.value)}
+            <textarea value={scene} onChange={e => setScene(e.target.value)}
               placeholder="例如：臥室前，夜晚。Mia 冷冷地執嘢，阿俊靠牆站，唔敢出聲..."
-              rows={6}
+              rows={5}
               className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#e8d5b0] transition-colors resize-none leading-relaxed placeholder:text-[#333]"
             />
           </div>
 
+          {/* Style Presets */}
           <div className="bg-[#111] border border-[#222] rounded-xl p-5">
-            <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-3">風格 JSON</div>
-            <div className="flex gap-2 mb-3">
-              {[
-                { key: 'ep1', label: '集一 · Mia' },
-                { key: 'ep2', label: '集二 · 阿俊' },
-                { key: 'custom', label: '自訂' },
-              ].map(p => (
-                <button key={p.key} onClick={() => setPresetStyle(p.key)}
-                  className={`px-3 py-1 rounded-full text-xs border transition-all ${preset === p.key ? 'bg-[#e8d5b0] text-[#0a0a0a] border-[#e8d5b0] font-bold' : 'border-[#222] text-[#555] hover:text-[#e8d5b0] hover:border-[#e8d5b0]'}`}>
-                  {p.label}
+            <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-4">電影風格</div>
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              {PRESETS.map(preset => (
+                <button key={preset.key} onClick={() => selectPreset(preset)}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    selectedPreset.key === preset.key && !isCustom
+                      ? 'border-[#e8d5b0] bg-[#e8d5b0]/10'
+                      : 'border-[#222] hover:border-[#444]'
+                  }`}>
+                  <div className="text-lg mb-1">{preset.emoji}</div>
+                  <div className={`text-xs font-bold ${selectedPreset.key === preset.key && !isCustom ? 'text-[#e8d5b0]' : 'text-[#e8e8e8]'}`}>
+                    {preset.name}
+                  </div>
+                  <div className="text-[10px] text-[#555] mt-0.5">{preset.desc}</div>
                 </button>
               ))}
             </div>
-            <textarea
-              value={styleJson}
-              onChange={e => { setStyleJson(e.target.value); setPreset('custom') }}
-              rows={8}
-              className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2.5 text-xs font-mono text-green-400 outline-none focus:border-[#e8d5b0] transition-colors resize-none leading-relaxed"
-            />
+
+            {/* Selected preset JSON preview */}
+            {!isCustom && (
+              <div className="bg-[#0a0a0a] border border-[#222] rounded-lg p-3 mb-3">
+                <div className="text-[10px] text-[#555] font-mono mb-2 uppercase tracking-widest">
+                  {selectedPreset.emoji} {selectedPreset.name} — 風格參數
+                </div>
+                <div className="text-[10px] font-mono text-green-500 leading-relaxed space-y-0.5">
+                  {Object.entries(selectedPreset.json).map(([k, v]) => (
+                    <div key={k}>
+                      <span className="text-[#555]">"{k}":</span>{' '}
+                      <span className="text-green-400">"{v}"</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Custom JSON */}
+            <button onClick={() => setIsCustom(!isCustom)}
+              className={`w-full py-2 rounded-lg border text-xs font-bold tracking-widest uppercase transition-all ${
+                isCustom ? 'border-[#e8d5b0] text-[#e8d5b0]' : 'border-[#222] text-[#555] hover:border-[#444]'
+              }`}>
+              ✏️ 自訂 JSON
+            </button>
+
+            {isCustom && (
+              <textarea value={customJson}
+                onChange={e => setCustomJson(e.target.value)}
+                placeholder={JSON.stringify(selectedPreset.json, null, 2)}
+                rows={8}
+                className="w-full mt-3 bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2.5 text-xs font-mono text-green-400 outline-none focus:border-[#e8d5b0] transition-colors resize-none leading-relaxed"
+              />
+            )}
           </div>
 
+          {/* Shot Count */}
           <div className="bg-[#111] border border-[#222] rounded-xl p-5">
             <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-3">鏡頭數量</div>
             <div className="flex items-center gap-4">
               <button onClick={() => setShotCount(Math.max(1, shotCount - 1))}
-                className="w-8 h-8 rounded-full border border-[#222] text-[#e8e8e8] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all text-lg flex items-center justify-center">−</button>
+                className="w-8 h-8 rounded-full border border-[#222] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all text-lg flex items-center justify-center">−</button>
               <span className="text-3xl text-[#e8d5b0] font-serif min-w-[40px] text-center">{shotCount}</span>
               <button onClick={() => setShotCount(Math.min(12, shotCount + 1))}
-                className="w-8 h-8 rounded-full border border-[#222] text-[#e8e8e8] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all text-lg flex items-center justify-center">+</button>
+                className="w-8 h-8 rounded-full border border-[#222] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all text-lg flex items-center justify-center">+</button>
               <span className="text-xs text-[#555]">個鏡頭</span>
             </div>
           </div>
@@ -240,9 +330,9 @@ export default function Home() {
             className="w-full py-4 bg-[#e8d5b0] text-[#0a0a0a] rounded-xl font-bold text-sm tracking-widest uppercase hover:opacity-90 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
             {generating ? '⏳ Claude 生成中...' : '🎬 生成 Kling Prompts'}
           </button>
-
         </div>
 
+        {/* RIGHT */}
         <div className="p-8 overflow-y-auto">
           <div className="flex items-center justify-between mb-8">
             <h1 className="text-3xl font-serif text-[#e8d5b0] italic">生成結果</h1>
@@ -265,16 +355,22 @@ export default function Home() {
             <div className="flex flex-col items-center justify-center min-h-[400px] gap-4 text-center">
               <div className="text-5xl opacity-20">🎥</div>
               <div className="text-2xl font-serif text-[#444] italic">準備好開始了</div>
-              <div className="text-sm text-[#333] max-w-xs leading-relaxed">輸入場景描述，選擇風格 JSON，然後撳「生成 Kling Prompts」</div>
+              <div className="text-sm text-[#333] max-w-xs leading-relaxed">
+                選擇電影風格，輸入場景描述，然後撳「生成 Kling Prompts」
+              </div>
             </div>
           )}
 
           {shots.length > 0 && (
             <>
-              <div className="bg-[#111] border border-[#222] rounded-xl px-6 py-4 mb-6">
-                <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-3">Kling 設定（每個 Shot 統一使用）</div>
-                <div className="flex gap-8">
-                  {[['Mode', '720p'], ['Duration', '5s'], ['Ratio', '9:16'], ['Multi-Shot', 'OFF'], ['Native Audio', 'ON']].map(([k, v]) => (
+              <div className="bg-[#111] border border-[#222] rounded-xl px-6 py-4 mb-6 flex items-center gap-4">
+                <span className="text-2xl">{selectedPreset.emoji}</span>
+                <div>
+                  <div className="text-xs font-bold text-[#e8d5b0] uppercase tracking-widest">{selectedPreset.name} 風格</div>
+                  <div className="text-xs text-[#555]">{selectedPreset.desc}</div>
+                </div>
+                <div className="ml-auto flex gap-6">
+                  {[['Mode', '720p'], ['Duration', '5s'], ['Ratio', '9:16']].map(([k, v]) => (
                     <div key={k}>
                       <div className="text-[10px] text-[#333] font-mono uppercase">{k}</div>
                       <div className="text-sm text-[#e8d5b0] font-bold">{v}</div>
@@ -286,7 +382,6 @@ export default function Home() {
               <div className="flex flex-col gap-5">
                 {shots.map((shot, i) => (
                   <div key={i} className="bg-[#111] border border-[#222] rounded-2xl overflow-hidden">
-
                     <div className="flex items-center justify-between px-5 py-4 border-b border-[#222]">
                       <div className="flex items-center gap-3">
                         <span className="bg-[#e8d5b0] text-[#0a0a0a] text-xs font-bold px-3 py-1 rounded-full font-mono">Shot {shot.number}</span>
@@ -294,7 +389,9 @@ export default function Home() {
                         <span className="text-xs text-[#555] italic">{shot.emotion}</span>
                       </div>
                       <button onClick={() => copyPrompt(i)}
-                        className={`px-3 py-1.5 rounded-full border text-xs font-bold transition-all ${copied === i ? 'border-green-500 text-green-400' : 'border-[#222] text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0]'}`}>
+                        className={`px-3 py-1.5 rounded-full border text-xs font-bold transition-all ${
+                          copied === i ? 'border-green-500 text-green-400' : 'border-[#222] text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0]'
+                        }`}>
                         {copied === i ? '✅ 已複製' : '📋 複製'}
                       </button>
                     </div>
@@ -310,25 +407,20 @@ export default function Home() {
                           🎥 一鍵生成影片
                         </button>
                       )}
-
                       {shot.videoStatus === 'generating' && (
                         <>
                           <div className="w-full py-3 border border-[#e8d5b0]/30 rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0]/50 text-center animate-pulse">
                             ⏳ 生成中... 約需 3 分鐘，生成完撳下面按鈕
                           </div>
-                          <button onClick={() => fetchResult(i)}
-                            disabled={fetchingResult === i}
+                          <button onClick={() => fetchResult(i)} disabled={fetchingResult === i}
                             className="w-full py-3 bg-[#1a1a1a] border border-[#e8d5b0] rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0] hover:bg-[#e8d5b0] hover:text-[#0a0a0a] transition-all disabled:opacity-50">
                             {fetchingResult === i ? '🔍 查詢中...' : '🔍 查詢影片結果'}
                           </button>
                           {shot.requestId && (
-                            <div className="text-[10px] text-[#333] font-mono text-center">
-                              Request ID: {shot.requestId}
-                            </div>
+                            <div className="text-[10px] text-[#333] font-mono text-center">Request ID: {shot.requestId}</div>
                           )}
                         </>
                       )}
-
                       {shot.videoStatus === 'done' && shot.videoUrl && (
                         <div className="space-y-3">
                           <video src={shot.videoUrl} controls className="w-full rounded-xl max-h-[500px]" />
@@ -338,12 +430,9 @@ export default function Home() {
                           </a>
                         </div>
                       )}
-
                       {shot.videoStatus === 'error' && (
                         <div className="flex flex-col gap-2">
-                          <div className="w-full py-3 border border-red-800/40 rounded-xl text-xs text-red-400 text-center">
-                            生成失敗
-                          </div>
+                          <div className="w-full py-3 border border-red-800/40 rounded-xl text-xs text-red-400 text-center">生成失敗</div>
                           <button onClick={() => generateVideo(i)}
                             className="w-full py-2.5 border border-[#222] rounded-xl text-xs text-[#555] hover:text-[#e8d5b0] hover:border-[#e8d5b0] transition-all">
                             重試
@@ -359,7 +448,6 @@ export default function Home() {
                         </div>
                       ))}
                     </div>
-
                   </div>
                 ))}
               </div>
