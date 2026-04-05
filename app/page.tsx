@@ -91,13 +91,15 @@ const SHOT_TYPES = [
   'Tracking Shot', 'POV Shot'
 ]
 
-interface ShotInput {
-  id: string
+interface Shot {
   number: number
-  sceneDesc: string
-  shotType: string
-  hasDialogue: boolean
-  dialogue: string
+  type: string
+  emotion: string
+  prompt: string
+  camera_setting: string
+  videoUrl?: string
+  videoStatus?: 'idle' | 'generating' | 'done' | 'error'
+  requestId?: string
 }
 
 interface Character {
