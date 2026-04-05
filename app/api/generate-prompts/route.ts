@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(req: NextRequest) {
   try {
-    const { scene, styleJson, shotCount, characters } = await req.json()
+    const { scene, styleJson, shotCount, characters, sceneRef } = await req.json()
 
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) throw new Error('Missing ANTHROPIC_API_KEY')
@@ -12,6 +12,10 @@ export async function POST(req: NextRequest) {
 
     const characterDesc = characters && characters.length > 0
       ? `\n\n角色描述（每個 prompt 都必須包含）：\n${characters.map((c: { name: string; description: string }) => `- ${c.name}：${c.description}`).join('\n')}`
+      : ''
+
+    const sceneDesc = sceneRef
+      ? `\n\n場景參考：${sceneRef.name}${sceneRef.description ? ` — ${sceneRef.description}` : ''}（每個 prompt 都必須保持呢個場景設定）`
       : ''
 
     const systemPrompt = `你係一個專業嘅電影分鏡師同 AI 影片 prompt 專家。
@@ -24,7 +28,8 @@ export async function POST(req: NextRequest) {
 4. 避免 AI 感，要有電影質感
 5. 如果係特寫或唔需要見臉嘅鏡頭，加「No faces visible」
 6. 如果有角色描述，每個 prompt 都必須加入對應角色嘅外貌描述
-7. 回覆必須係 JSON 格式
+7. 如果有場景參考，每個 prompt 都必須保持同一個場景設定，確保視覺一致性
+8. 回覆必須係 JSON 格式
 
 回覆格式：
 {
@@ -39,13 +44,14 @@ export async function POST(req: NextRequest) {
   ]
 }`
 
-    const userPrompt = `場景描述：${scene}${characterDesc}
+    const userPrompt = `場景描述：${scene}${characterDesc}${sceneDesc}
 
 風格 JSON：${JSON.stringify(styleJson, null, 2)}
 
 請為呢個場景生成 ${shotCount} 個鏡頭嘅 Kling prompt。
 每個鏡頭要有唔同嘅角度同情緒層次，由建立場景到情緒頂點。
-如果有角色描述，每個 prompt 都要包含角色嘅外貌特徵。`
+如果有角色描述，每個 prompt 都要包含角色嘅外貌特徵。
+如果有場景參考，每個 prompt 都要包含場景嘅視覺特徵，確保所有 Shot 係同一個地方。`
 
     const message = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
