@@ -60,7 +60,7 @@ export default function Characters() {
   }
 
   function addCharacter() {
-    if (!name || !uploadedImage) { setError('請輸入名字同圖片'); return }
+  if (!name) { setError('請輸入角色名字'); return }
     const newChar: Character = {
   id: Date.now().toString(),
   name,
