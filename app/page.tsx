@@ -1,13 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 const PRESETS = [
   {
-    key: 'korean',
-    emoji: '🇰🇷',
-    name: '韓劇',
-    desc: '眼神情感，奶油 bokeh',
+    key: 'korean', emoji: '🇰🇷', name: '韓劇', desc: '眼神情感，奶油 bokeh',
     json: {
       color_grade: "natural skin tone, soft warm tint, light desaturation, no heavy filter",
       lighting: "diffused natural daylight or soft window light, minimal shadows, clean and bright",
@@ -20,10 +17,7 @@ const PRESETS = [
     }
   },
   {
-    key: 'hollywood',
-    emoji: '🎬',
-    name: '荷里活',
-    desc: '高張力，冷藍專業感',
+    key: 'hollywood', emoji: '🎬', name: '荷里活', desc: '高張力，冷藍專業感',
     json: {
       color_grade: "cool desaturated tones, cinematic blue-grey LUT, high contrast shadows",
       lighting: "directional artificial lighting, motivated light sources, layered depth with rim lighting",
@@ -36,10 +30,7 @@ const PRESETS = [
     }
   },
   {
-    key: 'thriller',
-    emoji: '😱',
-    name: '驚悚',
-    desc: '黑暗壓迫，霓虹恐懼',
+    key: 'thriller', emoji: '😱', name: '驚悚', desc: '黑暗壓迫，霓虹恐懼',
     json: {
       color_grade: "deep shadow crush, cold blue-green tint, heavy vignette, crushed blacks with no lifted shadows",
       lighting: "single motivated light source only — neon, wall lamp or moonlight — face partially lit, rest in darkness",
@@ -52,10 +43,7 @@ const PRESETS = [
     }
   },
   {
-    key: 'japanese',
-    emoji: '🎌',
-    name: '日系',
-    desc: '青春自然，夏日紀錄片',
+    key: 'japanese', emoji: '🎌', name: '日系', desc: '青春自然，夏日紀錄片',
     json: {
       color_grade: "natural slightly overexposed, true-to-life colors, soft summer haze, no heavy grading",
       lighting: "100% natural daylight, outdoor scattered light or direct sun, no artificial fill",
@@ -68,10 +56,7 @@ const PRESETS = [
     }
   },
   {
-    key: 'wongkarwai',
-    emoji: '🏙️',
-    name: '香港文藝',
-    desc: '王家衛，橙紅慾望',
+    key: 'wongkarwai', emoji: '🏙️', name: '香港文藝', desc: '王家衛，橙紅慾望',
     json: {
       color_grade: "heavy warm amber and orange grade, high saturation, film grain, intentional color bleeding, vintage Kodak film look",
       lighting: "neon signs, street lamps, single warm practical lights, strong contrast between lit and unlit areas, no clean fill light",
@@ -84,10 +69,7 @@ const PRESETS = [
     }
   },
   {
-    key: 'hkrealist',
-    emoji: '🥢',
-    name: '港式寫實',
-    desc: '彭浩翔，城市日常',
+    key: 'hkrealist', emoji: '🥢', name: '港式寫實', desc: '彭浩翔，城市日常',
     json: {
       color_grade: "natural cool-neutral tones, slight desaturation, realistic Hong Kong street look, no cinematic grade",
       lighting: "available natural light, fluorescent interior lighting, no dramatic shadows",
@@ -101,6 +83,13 @@ const PRESETS = [
   }
 ]
 
+interface Character {
+  id: string
+  name: string
+  description: string
+  imageUrl: string
+}
+
 interface Shot {
   number: number
   type: string
@@ -110,6 +99,7 @@ interface Shot {
   videoUrl?: string
   videoStatus?: 'idle' | 'generating' | 'done' | 'error'
   requestId?: string
+  characterId?: string
 }
 
 export default function Home() {
@@ -124,11 +114,17 @@ export default function Home() {
   const [copied, setCopied] = useState<number | null>(null)
   const [copiedAll, setCopiedAll] = useState(false)
   const [fetchingResult, setFetchingResult] = useState<number | null>(null)
+  const [characters, setCharacters] = useState<Character[]>([])
+  const [showCharPicker, setShowCharPicker] = useState<number | null>(null)
+
+  useEffect(() => {
+    const saved = localStorage.getItem('soon_characters')
+    if (saved) setCharacters(JSON.parse(saved))
+  }, [])
 
   function selectPreset(preset: typeof PRESETS[0]) {
     setSelectedPreset(preset)
     setIsCustom(false)
-    setCustomJson('')
   }
 
   function getActiveJson() {
@@ -138,12 +134,28 @@ export default function Home() {
     return selectedPreset.json
   }
 
+  function assignCharacter(shotIndex: number, charId: string) {
+    setShots(prev => {
+      const n = [...prev]
+      n[shotIndex] = { ...n[shotIndex], characterId: charId }
+      return n
+    })
+    setShowCharPicker(null)
+  }
+
+  function removeCharacter(shotIndex: number) {
+    setShots(prev => {
+      const n = [...prev]
+      n[shotIndex] = { ...n[shotIndex], characterId: undefined }
+      return n
+    })
+  }
+
   async function generatePrompts() {
     if (!scene) { setError('請輸入場景描述'); return }
     setError('')
     setGenerating(true)
     setShots([])
-
     try {
       const res = await fetch('/api/generate-prompts', {
         method: 'POST',
@@ -162,13 +174,20 @@ export default function Home() {
 
   async function generateVideo(index: number) {
     const shot = shots[index]
+    const character = characters.find(c => c.id === shot.characterId)
+
     setShots(prev => { const n = [...prev]; n[index] = { ...n[index], videoStatus: 'generating' }; return n })
 
     try {
-      const res = await fetch('/api/generate-video', {
+      const endpoint = character ? '/api/image-to-video' : '/api/generate-video'
+      const body = character
+        ? { prompt: shot.prompt, imageUrl: character.imageUrl }
+        : { prompt: shot.prompt }
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: shot.prompt }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
@@ -183,15 +202,16 @@ export default function Home() {
     const shot = shots[index]
     if (!shot.requestId) return
     setFetchingResult(index)
+    const character = characters.find(c => c.id === shot.characterId)
+    const endpoint = character ? '/api/check-image-video' : '/api/check-video'
 
     try {
-      const res = await fetch('/api/check-video', {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ requestId: shot.requestId }),
       })
       const data = await res.json()
-
       if (data.status === 'COMPLETED') {
         const videoUrl = data.output?.video?.url
         setShots(prev => { const n = [...prev]; n[index] = { ...n[index], videoStatus: 'done', videoUrl }; return n })
@@ -233,6 +253,7 @@ export default function Home() {
             { label: '💡 題材庫', href: 'https://idea-brainstorm.vercel.app' },
             { label: '📝 劇本', href: 'https://script-generator-xi.vercel.app' },
             { label: '🎬 分鏡', href: 'https://soon-storyboard.vercel.app/storyboard' },
+            { label: '👤 角色庫', href: '/characters' },
           ].map(nav => (
             <a key={nav.href} href={nav.href}
               className="px-3 py-1.5 rounded-full text-xs border border-[#222] text-[#555] hover:text-[#e8d5b0] hover:border-[#e8d5b0] transition-all">
@@ -248,7 +269,6 @@ export default function Home() {
         {/* LEFT */}
         <div className="border-r border-[#222] p-8 flex flex-col gap-6 overflow-y-auto">
 
-          {/* Scene */}
           <div className="bg-[#111] border border-[#222] rounded-xl p-5">
             <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-3">場景描述</div>
             <textarea value={scene} onChange={e => setScene(e.target.value)}
@@ -258,7 +278,6 @@ export default function Home() {
             />
           </div>
 
-          {/* Style Presets */}
           <div className="bg-[#111] border border-[#222] rounded-xl p-5">
             <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-4">電影風格</div>
             <div className="grid grid-cols-2 gap-2 mb-4">
@@ -278,7 +297,6 @@ export default function Home() {
               ))}
             </div>
 
-            {/* Selected preset JSON preview */}
             {!isCustom && (
               <div className="bg-[#0a0a0a] border border-[#222] rounded-lg p-3 mb-3">
                 <div className="text-[10px] text-[#555] font-mono mb-2 uppercase tracking-widest">
@@ -295,7 +313,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* Custom JSON */}
             <button onClick={() => setIsCustom(!isCustom)}
               className={`w-full py-2 rounded-lg border text-xs font-bold tracking-widest uppercase transition-all ${
                 isCustom ? 'border-[#e8d5b0] text-[#e8d5b0]' : 'border-[#222] text-[#555] hover:border-[#444]'
@@ -304,8 +321,7 @@ export default function Home() {
             </button>
 
             {isCustom && (
-              <textarea value={customJson}
-                onChange={e => setCustomJson(e.target.value)}
+              <textarea value={customJson} onChange={e => setCustomJson(e.target.value)}
                 placeholder={JSON.stringify(selectedPreset.json, null, 2)}
                 rows={8}
                 className="w-full mt-3 bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2.5 text-xs font-mono text-green-400 outline-none focus:border-[#e8d5b0] transition-colors resize-none leading-relaxed"
@@ -313,7 +329,6 @@ export default function Home() {
             )}
           </div>
 
-          {/* Shot Count */}
           <div className="bg-[#111] border border-[#222] rounded-xl p-5">
             <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-3">鏡頭數量</div>
             <div className="flex items-center gap-4">
@@ -380,76 +395,116 @@ export default function Home() {
               </div>
 
               <div className="flex flex-col gap-5">
-                {shots.map((shot, i) => (
-                  <div key={i} className="bg-[#111] border border-[#222] rounded-2xl overflow-hidden">
-                    <div className="flex items-center justify-between px-5 py-4 border-b border-[#222]">
-                      <div className="flex items-center gap-3">
-                        <span className="bg-[#e8d5b0] text-[#0a0a0a] text-xs font-bold px-3 py-1 rounded-full font-mono">Shot {shot.number}</span>
-                        <span className="text-xs font-bold text-[#c0392b] uppercase tracking-widest">{shot.type}</span>
-                        <span className="text-xs text-[#555] italic">{shot.emotion}</span>
-                      </div>
-                      <button onClick={() => copyPrompt(i)}
-                        className={`px-3 py-1.5 rounded-full border text-xs font-bold transition-all ${
-                          copied === i ? 'border-green-500 text-green-400' : 'border-[#222] text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0]'
-                        }`}>
-                        {copied === i ? '✅ 已複製' : '📋 複製'}
-                      </button>
-                    </div>
+                {shots.map((shot, i) => {
+                  const assignedChar = characters.find(c => c.id === shot.characterId)
+                  return (
+                    <div key={i} className="bg-[#111] border border-[#222] rounded-2xl overflow-hidden">
 
-                    <div className="px-5 py-4">
-                      <p className="font-mono text-xs text-green-400 leading-relaxed">{shot.prompt}</p>
-                    </div>
-
-                    <div className="px-5 pb-5 flex flex-col gap-3">
-                      {shot.videoStatus === 'idle' && (
-                        <button onClick={() => generateVideo(i)}
-                          className="w-full py-3 border border-[#222] rounded-xl text-xs font-bold tracking-widest uppercase text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all">
-                          🎥 一鍵生成影片
+                      <div className="flex items-center justify-between px-5 py-4 border-b border-[#222]">
+                        <div className="flex items-center gap-3">
+                          <span className="bg-[#e8d5b0] text-[#0a0a0a] text-xs font-bold px-3 py-1 rounded-full font-mono">Shot {shot.number}</span>
+                          <span className="text-xs font-bold text-[#c0392b] uppercase tracking-widest">{shot.type}</span>
+                          <span className="text-xs text-[#555] italic">{shot.emotion}</span>
+                        </div>
+                        <button onClick={() => copyPrompt(i)}
+                          className={`px-3 py-1.5 rounded-full border text-xs font-bold transition-all ${
+                            copied === i ? 'border-green-500 text-green-400' : 'border-[#222] text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0]'
+                          }`}>
+                          {copied === i ? '✅ 已複製' : '📋 複製'}
                         </button>
-                      )}
-                      {shot.videoStatus === 'generating' && (
-                        <>
-                          <div className="w-full py-3 border border-[#e8d5b0]/30 rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0]/50 text-center animate-pulse">
-                            ⏳ 生成中... 約需 3 分鐘，生成完撳下面按鈕
-                          </div>
-                          <button onClick={() => fetchResult(i)} disabled={fetchingResult === i}
-                            className="w-full py-3 bg-[#1a1a1a] border border-[#e8d5b0] rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0] hover:bg-[#e8d5b0] hover:text-[#0a0a0a] transition-all disabled:opacity-50">
-                            {fetchingResult === i ? '🔍 查詢中...' : '🔍 查詢影片結果'}
-                          </button>
-                          {shot.requestId && (
-                            <div className="text-[10px] text-[#333] font-mono text-center">Request ID: {shot.requestId}</div>
-                          )}
-                        </>
-                      )}
-                      {shot.videoStatus === 'done' && shot.videoUrl && (
-                        <div className="space-y-3">
-                          <video src={shot.videoUrl} controls className="w-full rounded-xl max-h-[500px]" />
-                          <a href={shot.videoUrl} download target="_blank" rel="noreferrer"
-                            className="block w-full py-2.5 bg-[#e8d5b0] text-[#0a0a0a] rounded-xl text-xs font-bold tracking-widest uppercase text-center hover:opacity-90 transition-all">
-                            ⬇️ 下載影片
-                          </a>
-                        </div>
-                      )}
-                      {shot.videoStatus === 'error' && (
-                        <div className="flex flex-col gap-2">
-                          <div className="w-full py-3 border border-red-800/40 rounded-xl text-xs text-red-400 text-center">生成失敗</div>
-                          <button onClick={() => generateVideo(i)}
-                            className="w-full py-2.5 border border-[#222] rounded-xl text-xs text-[#555] hover:text-[#e8d5b0] hover:border-[#e8d5b0] transition-all">
-                            重試
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                      </div>
 
-                    <div className="px-5 py-3 border-t border-[#222] bg-[#0a0a0a] flex gap-6">
-                      {[['Camera', shot.camera_setting], ['Duration', '5s'], ['Ratio', '9:16'], ['Mode', '720p']].map(([k, v]) => (
-                        <div key={k} className="text-[11px] text-[#333] font-mono">
-                          {k}: <span className="text-[#e8d5b0]">{v}</span>
-                        </div>
-                      ))}
+                      <div className="px-5 py-4">
+                        <p className="font-mono text-xs text-green-400 leading-relaxed">{shot.prompt}</p>
+                      </div>
+
+                      {/* Character Picker */}
+                      <div className="px-5 pb-3">
+                        {assignedChar ? (
+                          <div className="flex items-center gap-3 bg-[#0a0a0a] border border-[#e8d5b0]/30 rounded-xl px-4 py-2.5">
+                            <img src={assignedChar.imageUrl} alt={assignedChar.name}
+                              className="w-8 h-8 rounded-full object-cover border border-[#e8d5b0]/50" />
+                            <div>
+                              <div className="text-xs font-bold text-[#e8d5b0]">{assignedChar.name}</div>
+                              <div className="text-[10px] text-[#555]">Image-to-Video 模式</div>
+                            </div>
+                            <button onClick={() => removeCharacter(i)}
+                              className="ml-auto text-[#555] hover:text-red-400 text-xs transition-all">移除</button>
+                          </div>
+                        ) : (
+                          <div className="relative">
+                            <button onClick={() => setShowCharPicker(showCharPicker === i ? null : i)}
+                              className="w-full py-2 border border-dashed border-[#333] rounded-xl text-xs text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all">
+                              👤 {characters.length > 0 ? '指定角色（可選）' : '先去角色庫新增角色'}
+                            </button>
+                            {showCharPicker === i && characters.length > 0 && (
+                              <div className="absolute top-full left-0 right-0 mt-2 bg-[#1a1a1a] border border-[#333] rounded-xl overflow-hidden z-10">
+                                {characters.map(char => (
+                                  <button key={char.id} onClick={() => assignCharacter(i, char.id)}
+                                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#222] transition-all text-left">
+                                    <img src={char.imageUrl} alt={char.name}
+                                      className="w-8 h-8 rounded-full object-cover" />
+                                    <div>
+                                      <div className="text-xs font-bold text-[#e8e8e8]">{char.name}</div>
+                                      <div className="text-[10px] text-[#555] truncate max-w-[200px]">{char.description}</div>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="px-5 pb-5 flex flex-col gap-3">
+                        {shot.videoStatus === 'idle' && (
+                          <button onClick={() => generateVideo(i)}
+                            className="w-full py-3 border border-[#222] rounded-xl text-xs font-bold tracking-widest uppercase text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all">
+                            {assignedChar ? `🎥 用 ${assignedChar.name} 生成影片` : '🎥 一鍵生成影片'}
+                          </button>
+                        )}
+                        {shot.videoStatus === 'generating' && (
+                          <>
+                            <div className="w-full py-3 border border-[#e8d5b0]/30 rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0]/50 text-center animate-pulse">
+                              ⏳ 生成中... 約需 3 分鐘
+                            </div>
+                            <button onClick={() => fetchResult(i)} disabled={fetchingResult === i}
+                              className="w-full py-3 bg-[#1a1a1a] border border-[#e8d5b0] rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0] hover:bg-[#e8d5b0] hover:text-[#0a0a0a] transition-all disabled:opacity-50">
+                              {fetchingResult === i ? '🔍 查詢中...' : '🔍 查詢影片結果'}
+                            </button>
+                            {shot.requestId && (
+                              <div className="text-[10px] text-[#333] font-mono text-center">Request ID: {shot.requestId}</div>
+                            )}
+                          </>
+                        )}
+                        {shot.videoStatus === 'done' && shot.videoUrl && (
+                          <div className="space-y-3">
+                            <video src={shot.videoUrl} controls className="w-full rounded-xl max-h-[500px]" />
+                            <a href={shot.videoUrl} download target="_blank" rel="noreferrer"
+                              className="block w-full py-2.5 bg-[#e8d5b0] text-[#0a0a0a] rounded-xl text-xs font-bold tracking-widest uppercase text-center hover:opacity-90 transition-all">
+                              ⬇️ 下載影片
+                            </a>
+                          </div>
+                        )}
+                        {shot.videoStatus === 'error' && (
+                          <div className="flex flex-col gap-2">
+                            <div className="w-full py-3 border border-red-800/40 rounded-xl text-xs text-red-400 text-center">生成失敗</div>
+                            <button onClick={() => generateVideo(i)}
+                              className="w-full py-2.5 border border-[#222] rounded-xl text-xs text-[#555] hover:text-[#e8d5b0] hover:border-[#e8d5b0] transition-all">重試</button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="px-5 py-3 border-t border-[#222] bg-[#0a0a0a] flex gap-6">
+                        {[['Camera', shot.camera_setting], ['Duration', '5s'], ['Ratio', '9:16'], ['Mode', '720p']].map(([k, v]) => (
+                          <div key={k} className="text-[11px] text-[#333] font-mono">
+                            {k}: <span className="text-[#e8d5b0]">{v}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </>
           )}
