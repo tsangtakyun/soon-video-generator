@@ -160,7 +160,12 @@ export default function Home() {
       const res = await fetch('/api/generate-prompts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scene, styleJson: getActiveJson(), shotCount }),
+        body: JSON.stringify({ 
+  scene, 
+  styleJson: getActiveJson(), 
+  shotCount,
+  characters: characters.map(c => ({ name: c.name, description: c.description }))
+}),
       })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
