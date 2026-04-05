@@ -287,6 +287,48 @@ useEffect(() => {
         {/* LEFT */}
         <div className="border-r border-[#222] p-8 flex flex-col gap-6 overflow-y-auto">
 
+          {/* Scene Picker */}
+<div className="bg-[#111] border border-[#222] rounded-xl p-5">
+  <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-3">場景參考圖</div>
+  {selectedScene ? (
+    <div className="flex items-center gap-3 bg-[#0a0a0a] border border-[#e8d5b0]/30 rounded-xl p-3">
+      <img src={selectedScene.imageUrl} alt={selectedScene.name}
+        className="w-12 h-12 rounded-lg object-cover border border-[#e8d5b0]/30" />
+      <div className="flex-1">
+        <div className="text-xs font-bold text-[#e8d5b0]">{selectedScene.name}</div>
+        <div className="text-[10px] text-[#555]">{selectedScene.description || '場景參考已設定'}</div>
+      </div>
+      <button onClick={() => setSelectedScene(null)}
+        className="text-[#555] hover:text-red-400 text-xs transition-all">移除</button>
+    </div>
+  ) : (
+    <div className="relative">
+      <button onClick={() => setShowScenePicker(!showScenePicker)}
+        className="w-full py-2.5 border border-dashed border-[#333] rounded-xl text-xs text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all">
+        🏠 {scenes.length > 0 ? '選擇場景參考圖（可選）' : '先去場景庫新增場景'}
+      </button>
+      {showScenePicker && scenes.length > 0 && (
+        <div className="absolute top-full left-0 right-0 mt-2 bg-[#1a1a1a] border border-[#333] rounded-xl overflow-hidden z-10">
+          {scenes.map(scene => (
+            <button key={scene.id}
+              onClick={() => { setSelectedScene(scene); setShowScenePicker(false) }}
+              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#222] transition-all text-left">
+              <img src={scene.imageUrl} alt={scene.name}
+                className="w-10 h-10 rounded-lg object-cover" />
+              <div>
+                <div className="text-xs font-bold text-[#e8e8e8]">{scene.name}</div>
+                <div className="text-[10px] text-[#555]">{scene.description || '冇描述'}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )}
+  <a href="/scenes" className="block text-center text-[10px] text-[#444] hover:text-[#e8d5b0] mt-2 transition-all">
+    管理場景庫 →
+  </a>
+</div>
           <div className="bg-[#111] border border-[#222] rounded-xl p-5">
             <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-3">場景描述</div>
             <textarea value={scene} onChange={e => setScene(e.target.value)}
