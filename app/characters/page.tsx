@@ -1,13 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
 
 interface Character {
   id: string
   name: string
   description: string
   appearanceJson: string
-imageUrl: string | null
+  imageUrl: string | null
   createdAt: number
 }
 
@@ -18,17 +19,31 @@ export default function Characters() {
   const [description, setDescription] = useState('')
   const [uploadedImage, setUploadedImage] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [appearanceJson, setAppearanceJson] = useState('')
 
   useEffect(() => {
-    const saved = localStorage.getItem('soon_characters')
-    if (saved) setCharacters(JSON.parse(saved))
+    loadCharacters()
   }, [])
 
-  function saveCharacters(chars: Character[]) {
-    setCharacters(chars)
-    localStorage.setItem('soon_characters', JSON.stringify(chars))
+  async function loadCharacters() {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('characters')
+      .select('*')
+      .order('created_at', { ascending: true })
+    if (!error && data) {
+      setCharacters(data.map(c => ({
+        id: c.id,
+        name: c.name,
+        description: c.description || '',
+        appearanceJson: c.appearance_json || '',
+        imageUrl: c.image_url || null,
+        createdAt: c.created_at,
+      })))
+    }
+    setLoading(false)
   }
 
   function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -59,32 +74,34 @@ export default function Characters() {
     }
   }
 
-  function addCharacter() {
-  if (!name) { setError('請輸入角色名字'); return }
-    const newChar: Character = {
-  id: Date.now().toString(),
-  name,
-  description,
-  appearanceJson,
- imageUrl: uploadedImage || '',
-  createdAt: Date.now(),
-}
-    saveCharacters([...characters, newChar])
+  async function addCharacter() {
+    if (!name) { setError('請輸入角色名字'); return }
+    setError('')
+    const newChar = {
+      id: Date.now().toString(),
+      name,
+      description,
+      appearance_json: appearanceJson,
+      image_url: uploadedImage || '',
+      created_at: Date.now(),
+    }
+    const { error } = await supabase.from('characters').insert(newChar)
+    if (error) { setError('儲存失敗：' + error.message); return }
+    await loadCharacters()
     setName('')
-setDescription('')
-setAppearanceJson('')
-setUploadedImage(null)
-setShowAdd(false)
-setError('')
+    setDescription('')
+    setAppearanceJson('')
+    setUploadedImage(null)
+    setShowAdd(false)
   }
 
-  function deleteCharacter(id: string) {
-    saveCharacters(characters.filter(c => c.id !== id))
+  async function deleteCharacter(id: string) {
+    await supabase.from('characters').delete().eq('id', id)
+    await loadCharacters()
   }
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#e8e8e8] font-sans">
-
       <header className="border-b border-[#222] px-8 py-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="text-xl font-serif text-[#e8d5b0] tracking-wide">SOON</span>
@@ -118,17 +135,13 @@ setError('')
           </button>
         </div>
 
-        {/* Add Character Panel */}
         {showAdd && (
           <div className="bg-[#111] border border-[#e8d5b0]/30 rounded-2xl p-6 mb-8">
             <h2 className="text-sm font-bold text-[#e8d5b0] mb-5 uppercase tracking-widest">新增角色</h2>
-
             {error && (
               <div className="bg-red-900/20 border border-red-800/40 rounded-xl px-4 py-3 text-sm text-red-400 mb-4">{error}</div>
             )}
-
             <div className="grid grid-cols-2 gap-6">
-              {/* Left: Info */}
               <div className="flex flex-col gap-4">
                 <div>
                   <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-2">角色名字</div>
@@ -137,35 +150,22 @@ setError('')
                     className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#e8d5b0] transition-colors"
                   />
                 </div>
-
                 <div>
-                  <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-2">角色描述（用於 AI 生成）</div>
+                  <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-2">角色描述</div>
                   <textarea value={description} onChange={e => setDescription(e.target.value)}
-                    placeholder="例如：young Asian woman, 25 years old, short bob hair, natural makeup, wearing beige knit sweater"
-                    rows={4}
+                    placeholder="例如：young Asian woman, 25 years old, short bob hair..."
+                    rows={3}
                     className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#e8d5b0] transition-colors resize-none"
                   />
                 </div>
-
                 <div>
-  <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-2">
-    外貌 JSON（鎖定角色樣子）
-  </div>
-  <textarea
-    value={appearanceJson}
-    onChange={e => setAppearanceJson(e.target.value)}
-    placeholder={`{
-  "hair": "short bob, dark brown",
-  "face": "delicate features, natural makeup",
-  "outfit": "beige knit sweater",
-  "body": "slender, 165cm",
-  "skin": "fair, natural tone"
-}`}
-    rows={6}
-    className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2.5 text-xs font-mono text-green-400 outline-none focus:border-[#e8d5b0] transition-colors resize-none"
-  />
-</div>
-                
+                  <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-2">外貌 JSON</div>
+                  <textarea value={appearanceJson} onChange={e => setAppearanceJson(e.target.value)}
+                    placeholder={`{\n  "hair": "short bob, dark brown",\n  "face": "delicate features"\n}`}
+                    rows={5}
+                    className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2.5 text-xs font-mono text-green-400 outline-none focus:border-[#e8d5b0] transition-colors resize-none"
+                  />
+                </div>
                 <div className="flex gap-3">
                   <button onClick={generateCharacterImage} disabled={generating}
                     className="flex-1 py-2.5 border border-[#e8d5b0] rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0] hover:bg-[#e8d5b0] hover:text-[#0a0a0a] transition-all disabled:opacity-40">
@@ -177,8 +177,6 @@ setError('')
                   </label>
                 </div>
               </div>
-
-              {/* Right: Preview */}
               <div className="flex flex-col gap-4">
                 <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-2">圖片預覽</div>
                 <div className="flex-1 bg-[#0a0a0a] border border-[#222] rounded-xl overflow-hidden flex items-center justify-center min-h-[250px]">
@@ -187,38 +185,39 @@ setError('')
                   ) : (
                     <div className="text-[#333] text-xs text-center">
                       <div className="text-3xl mb-2">👤</div>
-                      AI 生成或上傳圖片
+                      AI 生成或上傳圖片（可選）
                     </div>
                   )}
                 </div>
                 <button onClick={addCharacter}
-  className="w-full py-3 bg-[#e8d5b0] text-[#0a0a0a] rounded-xl text-xs font-bold tracking-widest uppercase hover:opacity-90 transition-all">
-  ✅ 儲存角色
-</button>
+                  className="w-full py-3 bg-[#e8d5b0] text-[#0a0a0a] rounded-xl text-xs font-bold tracking-widest uppercase hover:opacity-90 transition-all">
+                  ✅ 儲存角色
+                </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Character Grid */}
-        {characters.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="text-[#555] text-sm">載入中...</div>
+          </div>
+        ) : characters.length === 0 ? (
           <div className="flex flex-col items-center justify-center min-h-[400px] gap-4 text-center">
             <div className="text-5xl opacity-20">👤</div>
             <div className="text-2xl font-serif text-[#444] italic">角色庫係空嘅</div>
-            <div className="text-sm text-[#333] max-w-xs leading-relaxed">
-              新增角色後，生成影片時可以保持角色樣子一致
-            </div>
+            <div className="text-sm text-[#333] max-w-xs leading-relaxed">新增角色後，生成影片時可以保持角色樣子一致</div>
           </div>
         ) : (
           <div className="grid grid-cols-4 gap-5">
             {characters.map(char => (
               <div key={char.id} className="bg-[#111] border border-[#222] rounded-2xl overflow-hidden group">
                 <div className="aspect-[9/16] overflow-hidden relative bg-[#0a0a0a] flex items-center justify-center">
-  {char.imageUrl ? (
-    <img src={char.imageUrl} alt={char.name} className="w-full h-full object-cover" />
-  ) : (
-    <div className="text-4xl opacity-20">👤</div>
-  )}
+                  {char.imageUrl ? (
+                    <img src={char.imageUrl} alt={char.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="text-4xl opacity-20">👤</div>
+                  )}
                   <button onClick={() => deleteCharacter(char.id)}
                     className="absolute top-3 right-3 w-8 h-8 bg-black/60 rounded-full text-xs text-red-400 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center">
                     ✕
