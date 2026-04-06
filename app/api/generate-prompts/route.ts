@@ -44,8 +44,8 @@ export async function POST(req: NextRequest) {
     const shotsDesc = shotInputs.map((s: ShotInput) => {
       let desc = `Shot ${s.number} [${s.shotType}]：${s.sceneDesc}`
       if (s.hasDialogue && s.dialogue) {
-        desc += `\n對白：\n${s.dialogue}`
-      }
+  desc += `\n對白情緒（唔好將對白內容入 prompt，只係描述情緒同嘴型狀態）：\n${s.dialogue}`
+}
       return desc
     }).join('\n\n')
 
@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
 6. 如果有角色描述，每個 prompt 都必須加入對應角色嘅外貌描述
 7. 如果有場景參考，每個 prompt 都必須保持同一個場景設定
 8. 回覆必須係 JSON 格式，shots 數量必須同輸入嘅 Shot 數量一樣
+9. 如果有對白，絕對唔可以將對白文字寫入 prompt，只係描述角色嘅情緒、嘴型狀態（lips moving、speaking）、同語氣
 
 回覆格式：
 {
