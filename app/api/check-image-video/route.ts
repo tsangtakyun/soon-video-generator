@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
     if (!falApiKey) throw new Error('Missing FAL_API_KEY')
 
     const statusRes = await fetch(
-      `https://queue.fal.run/fal-ai/kling-video/v1.6/standard/image-to-video/requests/${requestId}/status`,
+      `https://queue.fal.run/fal-ai/kling-video/v3/pro/text-to-video/requests/${requestId}/status`,
       { headers: { 'Authorization': `Key ${falApiKey}` } }
     )
 
@@ -16,10 +16,11 @@ export async function POST(req: NextRequest) {
 
     if (statusData.status === 'COMPLETED') {
       const resultRes = await fetch(
-        `https://queue.fal.run/fal-ai/kling-video/v1.6/standard/image-to-video/requests/${requestId}`,
+        `https://queue.fal.run/fal-ai/kling-video/v3/pro/text-to-video/requests/${requestId}`,
         { headers: { 'Authorization': `Key ${falApiKey}` } }
       )
       const resultData = await resultRes.json()
+      console.log('Result data:', JSON.stringify(resultData).substring(0, 300)) 
       const videoUrl = resultData.video?.url || resultData.videos?.[0]?.url
       return NextResponse.json({ status: 'COMPLETED', output: { video: { url: videoUrl } } })
     }
