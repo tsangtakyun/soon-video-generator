@@ -241,14 +241,17 @@ async function loadData() {
     }
   }
 
-  async function generateVideo(index: number) {
-    setShots(prev => { const n = [...prev]; n[index] = { ...n[index], videoStatus: 'generating' }; return n })
-    try {
-      const res = await fetch('/api/generate-video', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: shots[index].prompt }),
-      })
+  async function generateVideo(index: number, elementImageUrl?: string) {
+  setShots(prev => { const n = [...prev]; n[index] = { ...n[index], videoStatus: 'generating' }; return n })
+  try {
+    const res = await fetch('/api/generate-video', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        prompt: shots[index].prompt,
+        elementImageUrl: elementImageUrl || null,
+      }),
+    })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
       setShots(prev => { const n = [...prev]; n[index] = { ...n[index], requestId: data.request_id }; return n })
@@ -609,10 +612,23 @@ async function fetchLipSyncResult(index: number) {
 
                     <div className="px-5 pb-5 flex flex-col gap-3">
                       {shot.videoStatus === 'idle' && (
-                        <button onClick={() => generateVideo(i)}
-                          className="w-full py-3 border border-[#222] rounded-xl text-xs font-bold tracking-widest uppercase text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all">
-                          🎥 一鍵生成影片
-                        </button>
+  <div className="flex flex-col gap-2">
+    <button onClick={() => generateVideo(i)}
+      className="w-full py-3 border border-[#222] rounded-xl text-xs font-bold tracking-widest uppercase text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all">
+      🎥 生成影片（無 Element）
+    </button>
+    {characters.length > 0 && (
+      <div className="flex flex-col gap-1">
+        {characters.filter(c => c.imageUrl).map(char => (
+          <button key={char.id} onClick={() => generateVideo(i, char.imageUrl)}
+            className="w-full py-2.5 border border-[#e8d5b0]/30 rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0]/70 hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all">
+            👤 用 {char.name} Element 生成
+          </button>
+        ))}
+      </div>
+    )}
+  </div>
+)}
                       )}
                       {shot.videoStatus === 'generating' && (
                         <>
