@@ -7,14 +7,13 @@ export async function POST(req: NextRequest) {
     const falApiKey = process.env.FAL_API_KEY
     if (!falApiKey) throw new Error('Missing FAL_API_KEY')
 
-    const response = await fetch('https://queue.fal.run/fal-ai/kling-video/v1.6/standard/video-to-video', {
+    const response = await fetch('https://queue.fal.run/fal-ai/kling-video/lipsync/audio-to-video', {
       method: 'POST',
       headers: {
         'Authorization': `Key ${falApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        prompt: 'character speaking naturally with lip sync',
         video_url: videoUrl,
         audio_url: audioUrl,
       }),
