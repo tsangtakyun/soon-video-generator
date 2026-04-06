@@ -145,9 +145,11 @@ export default function Home() {
   const [shots, setShots] = useState<Shot[]>([])
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [copied, setCopied] = useState<number | null>(null)
   const [copiedAll, setCopiedAll] = useState(false)
   const [fetchingResult, setFetchingResult] = useState<number | null>(null)
+  const [savingReferenceId, setSavingReferenceId] = useState<string | null>(null)
   const [characters, setCharacters] = useState<Character[]>([])
   const [scenes, setScenes] = useState<Scene[]>([])
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null)
@@ -231,6 +233,7 @@ async function loadData() {
     if (validShots.length === 0) { setError('請至少填寫一個 Shot 嘅場景描述'); return }
     if (selectedCharacterIds.length === 0) { setError('請至少鎖定一個角色，先開始生成'); return }
     setError('')
+    setNotice('')
     setGenerating(true)
     setShots([])
 
@@ -403,6 +406,33 @@ async function fetchLipSyncResult(index: number) {
       next[index] = { ...next[index], frameApproved: true }
       return next
     })
+  }
+
+  async function setCharacterMasterReference(character: Character, frameUrl: string) {
+    setSavingReferenceId(character.id)
+    setError('')
+    setNotice('')
+
+    const { error: updateError } = await supabase
+      .from('characters')
+      .update({ image_url: frameUrl })
+      .eq('id', character.id)
+
+    if (updateError) {
+      setSavingReferenceId(null)
+      setError(`儲存角色主圖失敗：${updateError.message}`)
+      return
+    }
+
+    setCharacters(prev =>
+      prev.map(item =>
+        item.id === character.id
+          ? { ...item, imageUrl: frameUrl }
+          : item
+      )
+    )
+    setNotice(`已將呢張圖設為 ${character.name} 嘅角色主參考圖`)
+    setSavingReferenceId(null)
   }
   
   async function copyPrompt(index: number) {
@@ -650,6 +680,13 @@ async function fetchLipSyncResult(index: number) {
             </div>
           )}
 
+          {notice && (
+            <div className="bg-green-900/20 border border-green-800/40 rounded-xl px-5 py-4 text-sm text-green-400 mb-6">
+              {notice}
+              <button onClick={() => setNotice('')} className="ml-3 underline text-xs">關閉</button>
+            </div>
+          )}
+
           {shots.length === 0 && !generating && (
             <div className="flex flex-col items-center justify-center min-h-[400px] gap-4 text-center">
               <div className="text-5xl opacity-20">🎥</div>
@@ -715,6 +752,23 @@ async function fetchLipSyncResult(index: number) {
         <div className="w-[200px] aspect-[9/16] rounded-xl overflow-hidden mx-auto">
   <img src={shot.frameUrl} alt="frame" className="w-full h-full object-cover" />
 </div>
+        {activeCharacters.length > 0 && (
+          <div className="mt-3 flex flex-col gap-2">
+            <div className="text-[10px] text-[#555] font-bold uppercase tracking-widest">角色主圖</div>
+            {activeCharacters.map(character => (
+              <button
+                key={character.id}
+                onClick={() => setCharacterMasterReference(character, shot.frameUrl!)}
+                disabled={savingReferenceId === character.id}
+                className="w-full py-2 rounded-xl border border-[#333] text-[10px] font-bold tracking-widest uppercase text-[#888] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all disabled:opacity-40"
+              >
+                {savingReferenceId === character.id
+                  ? '⏳ 儲存主圖中...'
+                  : `👤 設為 ${character.name} 主參考圖`}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2 mt-2">
           <button
             onClick={() => approveFrame(i)}
