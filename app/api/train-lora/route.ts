@@ -15,11 +15,9 @@ export async function POST(req: NextRequest) {
 
     if (!file) throw new Error('冇收到檔案')
 
-    // 上傳 zip 到 fal storage
     const zipUrl = await fal.storage.upload(file)
     console.log('Uploaded zip:', zipUrl)
 
-    // 開始訓練
     const { request_id } = await fal.queue.submit('fal-ai/flux-lora-fast-training', {
       input: {
         images_data_url: zipUrl,
