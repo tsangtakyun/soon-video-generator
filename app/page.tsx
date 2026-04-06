@@ -629,7 +629,8 @@ async function fetchLipSyncResult(index: number) {
     )}
   </div>
 )}
-                      )}
+
+                      
                       {shot.videoStatus === 'generating' && (
                         <>
                           <div className="w-full py-3 border border-[#e8d5b0]/30 rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0]/50 text-center animate-pulse">
