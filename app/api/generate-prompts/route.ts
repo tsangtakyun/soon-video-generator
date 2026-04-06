@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     const shotsDesc = shotInputs.map((s: ShotInput) => {
       let desc = `Shot ${s.number} [${s.shotType}]：${s.sceneDesc}`
       if (s.hasDialogue && s.dialogue) {
-  desc += `\n對白情緒（唔好將對白內容入 prompt，只係描述情緒同嘴型狀態）：\n${s.dialogue}`
+  desc += `\n[此 Shot 有對白。請勿加入任何對白文字。只需描述：lips moving while speaking, mouth open and closing naturally]`
 }
       return desc
     }).join('\n\n')
