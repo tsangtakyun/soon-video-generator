@@ -400,6 +400,35 @@ async function fetchLipSyncResult(index: number) {
   }
 }
 
+  async function generateFrameFromPreviousShot(index: number) {
+  const previousShot = shots[index - 1]
+  if (!previousShot?.frameUrl) {
+    setError('上一個 Shot 仲未有第一格，未能沿用')
+    return
+  }
+
+  setShots(prev => { const n = [...prev]; n[index] = { ...n[index], frameStatus: 'generating' }; return n })
+  try {
+    const shot = shots[index]
+    const framePrompt = `${shot.type}, ${shot.prompt}, first frame composition`
+
+    const res = await fetch('/api/generate-frame', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        characterImageUrl: previousShot.frameUrl,
+        prompt: framePrompt,
+      }),
+    })
+    const data = await res.json()
+    if (data.error) throw new Error(data.error)
+    setShots(prev => { const n = [...prev]; n[index] = { ...n[index], frameStatus: 'done', frameUrl: data.frameUrl, frameApproved: false }; return n })
+  } catch (err: unknown) {
+    setShots(prev => { const n = [...prev]; n[index] = { ...n[index], frameStatus: 'error' }; return n })
+    setError(err instanceof Error ? err.message : '沿用上一個 Shot 第一格失敗')
+  }
+}
+
   function approveFrame(index: number) {
     setShots(prev => {
       const next = [...prev]
@@ -800,6 +829,15 @@ async function fetchLipSyncResult(index: number) {
     {frameReadyCharacters.length > 0 && !shot.frameUrl && (
       <div className="flex flex-col gap-1">
         <div className="text-[10px] text-[#555] font-bold uppercase tracking-widest">Step 1 — 生成第一格</div>
+        {i > 0 && shots[i - 1]?.frameUrl && (
+          <button
+            onClick={() => generateFrameFromPreviousShot(i)}
+            disabled={shot.frameStatus === 'generating'}
+            className="w-full py-2.5 border border-[#e8d5b0]/40 rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0] hover:bg-[#e8d5b0]/10 transition-all disabled:opacity-40"
+          >
+            {shot.frameStatus === 'generating' ? '⏳ 沿用上一個 Shot 中...' : `↪️ 沿用 Shot ${i} 第一格`}
+          </button>
+        )}
         {frameReadyCharacters.map(char => (
           <button key={char.id}
             onClick={() => generateFrame(i, char)}
