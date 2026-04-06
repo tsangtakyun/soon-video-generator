@@ -9,7 +9,10 @@ export async function POST(req: NextRequest) {
     const file = formData.get('file') as File
     if (!file) throw new Error('No file provided')
 
-    // 上傳到 fal.ai storage
+    console.log('File name:', file.name)
+    console.log('File size:', file.size)
+    console.log('File type:', file.type)
+
     const uploadFormData = new FormData()
     uploadFormData.append('file', file)
 
@@ -21,13 +24,21 @@ export async function POST(req: NextRequest) {
       body: uploadFormData,
     })
 
-    const data = await response.json()
-    if (!response.ok) throw new Error(data.detail || 'Upload error')
+    console.log('Upload status:', response.status)
+    const responseText = await response.text()
+    console.log('Upload response:', responseText)
 
-    return NextResponse.json({ url: data.access_url || data.url })
+    if (!response.ok) throw new Error(`Upload failed: ${response.status} - ${responseText}`)
+
+    const data = JSON.parse(responseText)
+    const url = data.access_url || data.url
+    console.log('File URL:', url)
+
+    return NextResponse.json({ url })
 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error'
+    console.error('Upload error:', message)
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
