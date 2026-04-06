@@ -20,21 +20,27 @@ export async function POST(req: NextRequest) {
       console.log('Uploaded character image:', imageUrl)
     }
 
-    // 用 Flux Schnell 生成（支援 prompt + image style）
-    const result = await fal.subscribe('fal-ai/flux/schnell', {
-      input: {
-        prompt: prompt,
-        num_images: 1,
-        image_size: 'portrait_4_3' as const,
+    // 用 Flux Dev Redux REST API（保持角色樣）
+    const response = await fetch('https://fal.run/fal-ai/flux/dev/redux', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Key ${falApiKey}`,
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify({
+        image_url: imageUrl,
+        num_images: 1,
+      }),
     })
 
-    const data = result.data as { images?: { url: string }[] }
-    const frameUrl = data?.images?.[0]?.url
+    const data = await response.json()
+    console.log('Flux Redux response:', JSON.stringify(data).substring(0, 200))
 
+    if (!response.ok) throw new Error(data.detail || JSON.stringify(data))
+
+    const frameUrl = data?.images?.[0]?.url
     if (!frameUrl) throw new Error('冇生成到圖片')
 
-    console.log('Generated frame:', frameUrl)
     return NextResponse.json({ frameUrl })
 
   } catch (error: unknown) {
