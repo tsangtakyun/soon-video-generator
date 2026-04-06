@@ -9,6 +9,7 @@ interface Character {
   description: string
   appearanceJson: string
   imageUrl: string | null
+  loraUrl: string | null 
   createdAt: number
 }
 
@@ -40,6 +41,7 @@ export default function Characters() {
         description: c.description || '',
         appearanceJson: c.appearance_json || '',
         imageUrl: c.image_url || null,
+        loraUrl: c.lora_url || null, 
         createdAt: c.created_at,
       })))
     }
@@ -100,6 +102,13 @@ export default function Characters() {
     await loadCharacters()
   }
 
+  async function handleTrainLora(characterId: string, e: React.ChangeEvent<HTMLInputElement>) {
+  ...
+}
+
+async function pollTraining(...) {
+  ...
+}
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#e8e8e8] font-sans">
       <header className="border-b border-[#222] px-8 py-5 flex items-center justify-between">
@@ -227,8 +236,12 @@ export default function Characters() {
                   <div className="font-bold text-sm text-[#e8d5b0] mb-1">{char.name}</div>
                   <div className="text-xs text-[#555] leading-relaxed line-clamp-2">{char.description || '冇描述'}</div>
                 </div>
-              </div>
-            ))}
+                <div className="p-3 border-t border-[#222]">
+      ...訓練 LoRA UI...
+    </div>
+  </div>
+))}
+             
           </div>
         )}
       </div>
