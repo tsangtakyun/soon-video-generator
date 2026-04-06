@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
     if (!falApiKey) throw new Error('Missing FAL_API_KEY')
 
     const body: Record<string, unknown> = {
-      prompt: elementImageUrl ? `@Element1 ${prompt}` : prompt,
+      prompt: elementImageUrl ? `${prompt} @Element1` : prompt,
       aspect_ratio: '9:16',
       duration: '5',
       generate_audio: false,
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     if (elementImageUrl) {
       body.elements = [
         {
-          image_url: elementImageUrl,
+          images: [{ image_url: elementImageUrl }]
         }
       ]
     }
@@ -32,13 +32,14 @@ export async function POST(req: NextRequest) {
     })
 
     const data = await response.json()
-    console.log('Generate video response:', JSON.stringify(data).substring(0, 200))
-    if (!response.ok) throw new Error(data.detail || 'fal.ai error')
+    console.log('Generate video response:', JSON.stringify(data).substring(0, 300))
+    if (!response.ok) throw new Error(data.detail || JSON.stringify(data))
 
     return NextResponse.json({ request_id: data.request_id })
 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error'
+    console.error('Generate video error:', message)
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
