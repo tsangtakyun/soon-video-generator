@@ -118,6 +118,7 @@ interface Scene {
 }
 
 interface Shot {
+  id: string
   number: number
   type: string
   emotion: string
@@ -228,6 +229,18 @@ async function loadData() {
     )
   }
 
+  function createBaseShotState(inputId: string, shot: Shot): Shot {
+    return {
+      ...shot,
+      id: inputId,
+      frameStatus: 'idle',
+      frameApproved: false,
+      videoStatus: 'idle',
+      lipSyncStatus: 'idle',
+      usedFrame: false,
+    }
+  }
+
   async function generatePrompts() {
     const validShots = shotInputs.filter(s => s.sceneDesc.trim())
     if (validShots.length === 0) { setError('請至少填寫一個 Shot 嘅場景描述'); return }
@@ -235,7 +248,6 @@ async function loadData() {
     setError('')
     setNotice('')
     setGenerating(true)
-    setShots([])
 
     try {
       const res = await fetch('/api/generate-prompts', {
@@ -254,12 +266,33 @@ async function loadData() {
       })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
-      setShots(data.shots.map((s: Shot) => ({
-        ...s,
-        frameStatus: 'idle',
-        frameApproved: false,
-        videoStatus: 'idle',
-      })))
+      setShots(prev => {
+        const previousShots = new Map(prev.map(shot => [shot.id, shot]))
+
+        return data.shots.map((generatedShot: Shot, index: number) => {
+          const inputId = validShots[index].id
+          const existingShot = previousShots.get(inputId)
+
+          if (!existingShot) {
+            return createBaseShotState(inputId, generatedShot)
+          }
+
+          const promptChanged =
+            existingShot.prompt !== generatedShot.prompt ||
+            existingShot.type !== generatedShot.type ||
+            existingShot.number !== generatedShot.number
+
+          if (promptChanged) {
+            return createBaseShotState(inputId, generatedShot)
+          }
+
+          return {
+            ...existingShot,
+            ...generatedShot,
+            id: inputId,
+          }
+        })
+      })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '生成失敗')
     } finally {
@@ -750,7 +783,7 @@ async function fetchLipSyncResult(index: number) {
 
               <div className="flex flex-col gap-5">
                 {shots.map((shot, i) => (
-                  <div key={i} className="bg-[#111] border border-[#222] rounded-2xl overflow-hidden">
+                  <div key={shot.id} className="bg-[#111] border border-[#222] rounded-2xl overflow-hidden">
 
                     <div className="flex items-center justify-between px-5 py-4 border-b border-[#222]">
                       <div className="flex items-center gap-3">
