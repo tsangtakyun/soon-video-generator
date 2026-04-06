@@ -74,20 +74,26 @@ export default function Characters() {
   }
 
   async function handleTrainLora(characterId: string, e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = async () => {
-      try {
-        const res = await fetch('/api/train-lora', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ characterId, imagesZipUrl: reader.result, triggerWord: 'MIACHAR' }) })
-        const data = await res.json()
-        if (data.error) throw new Error(data.error)
-        alert('訓練開始！大概需要 15-30 分鐘，完成後會自動儲存。')
-        pollTraining(data.request_id, characterId)
-      } catch (err) { alert('訓練失敗：' + err) }
-    }
-    reader.readAsDataURL(file)
+  const file = e.target.files?.[0]
+  if (!file) return
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('characterId', characterId)
+    formData.append('triggerWord', 'MIACHAR')
+
+    const res = await fetch('/api/train-lora', {
+      method: 'POST',
+      body: formData, // ← 唔用 JSON，用 FormData
+    })
+    const data = await res.json()
+    if (data.error) throw new Error(data.error)
+    alert('訓練開始！大概需要 15-30 分鐘，完成後會自動儲存。')
+    pollTraining(data.request_id, characterId)
+  } catch (err) {
+    alert('訓練失敗：' + err)
   }
+}
 
   async function pollTraining(requestId: string, characterId: string) {
     const interval = setInterval(async () => {
