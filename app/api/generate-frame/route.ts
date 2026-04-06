@@ -10,7 +10,6 @@ export async function POST(req: NextRequest) {
 
     fal.config({ credentials: falApiKey })
 
-    // 如果係 base64，先上傳
     let imageUrl = characterImageUrl
     if (characterImageUrl.startsWith('data:')) {
       const response = await fetch(characterImageUrl)
@@ -20,7 +19,6 @@ export async function POST(req: NextRequest) {
       console.log('Uploaded character image:', imageUrl)
     }
 
-    // 用 Flux Dev Redux REST API（保持角色樣）
     const response = await fetch('https://fal.run/fal-ai/flux/dev/redux', {
       method: 'POST',
       headers: {
@@ -30,6 +28,10 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         image_url: imageUrl,
         num_images: 1,
+        image_size: {
+          width: 720,
+          height: 1280,
+        },
       }),
     })
 
