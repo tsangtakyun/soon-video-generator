@@ -77,14 +77,14 @@ export default function Characters() {
   const file = e.target.files?.[0]
   if (!file) return
   try {
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('characterId', characterId)
-    formData.append('triggerWord', 'MIACHAR')
-
+    const { fal } = await import('@fal-ai/client')
+    fal.config({ credentials: process.env.NEXT_PUBLIC_FAL_API_KEY! })
+    alert('上傳中，請稍候...')
+    const zipUrl = await fal.storage.upload(file)
     const res = await fetch('/api/train-lora', {
       method: 'POST',
-      body: formData, // ← 唔用 JSON，用 FormData
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ characterId, zipUrl, triggerWord: 'MIACHAR' }),
     })
     const data = await res.json()
     if (data.error) throw new Error(data.error)
