@@ -2,10 +2,25 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt } = await req.json()
+    const { prompt, elementImageUrl } = await req.json()
 
     const falApiKey = process.env.FAL_API_KEY
     if (!falApiKey) throw new Error('Missing FAL_API_KEY')
+
+    const body: Record<string, unknown> = {
+      prompt: elementImageUrl ? `@Element1 ${prompt}` : prompt,
+      aspect_ratio: '9:16',
+      duration: '5',
+      generate_audio: false,
+    }
+
+    if (elementImageUrl) {
+      body.elements = [
+        {
+          image_url: elementImageUrl,
+        }
+      ]
+    }
 
     const response = await fetch('https://queue.fal.run/fal-ai/kling-video/v3/pro/text-to-video', {
       method: 'POST',
@@ -13,15 +28,11 @@ export async function POST(req: NextRequest) {
         'Authorization': `Key ${falApiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        prompt,
-        aspect_ratio: '9:16',
-        duration: '5',
-        generate_audio: false,
-      }),
+      body: JSON.stringify(body),
     })
 
     const data = await response.json()
+    console.log('Generate video response:', JSON.stringify(data).substring(0, 200))
     if (!response.ok) throw new Error(data.detail || 'fal.ai error')
 
     return NextResponse.json({ request_id: data.request_id })
