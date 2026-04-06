@@ -14,18 +14,21 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        prompt: 'character speaking naturally with lip sync',
         video_url: videoUrl,
         audio_url: audioUrl,
       }),
     })
 
     const data = await response.json()
+    console.log('Lip sync response:', JSON.stringify(data))
     if (!response.ok) throw new Error(data.detail || 'Lip sync error')
 
     return NextResponse.json({ request_id: data.request_id })
 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error'
+    console.error('Lip sync error:', message)
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
