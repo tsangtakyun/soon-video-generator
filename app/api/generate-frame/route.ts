@@ -4,12 +4,12 @@ import { fal } from '@fal-ai/client'
 export async function POST(req: NextRequest) {
   try {
     const { characterImageUrl, prompt } = await req.json()
-
+    
     const falApiKey = process.env.FAL_API_KEY
     if (!falApiKey) throw new Error('Missing FAL_API_KEY')
-
+    
     fal.config({ credentials: falApiKey })
-
+    
     let imageUrl = characterImageUrl
     if (characterImageUrl.startsWith('data:')) {
       const response = await fetch(characterImageUrl)
@@ -19,32 +19,20 @@ export async function POST(req: NextRequest) {
       console.log('Uploaded character image:', imageUrl)
     }
 
-    const response = await fetch('https://fal.run/fal-ai/flux/dev/redux', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Key ${falApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    const result = await fal.subscribe('fal-ai/flux/dev/redux', {
+      input: {
         image_url: imageUrl,
         num_images: 1,
-        image_size: {
-          width: 720,
-          height: 1280,
-        },
-      }),
+        image_size: 'portrait_16_9',
+      },
     })
 
-    const data = await response.json()
-    console.log('Flux Redux response:', JSON.stringify(data).substring(0, 200))
-
-    if (!response.ok) throw new Error(data.detail || JSON.stringify(data))
-
-    const frameUrl = data?.images?.[0]?.url
+    console.log('Flux Redux response:', JSON.stringify(result.data).substring(0, 200))
+    
+    const frameUrl = (result.data as any)?.images?.[0]?.url
     if (!frameUrl) throw new Error('冇生成到圖片')
 
     return NextResponse.json({ frameUrl })
-
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error'
     console.error('Generate frame error:', message)
