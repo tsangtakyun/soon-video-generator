@@ -36,13 +36,18 @@ export async function POST(req: NextRequest) {
       imageUrl = await fal.storage.upload(file)
     }
 
+    const reduxInput: Record<string, unknown> = {
+      image_url: imageUrl,
+      num_images: 1,
+      image_size: 'portrait_16_9',
+    }
+
+    if (prompt) {
+      reduxInput.prompt = prompt
+    }
+
     const result = await fal.subscribe('fal-ai/flux/dev/redux', {
-      input: {
-        image_url: imageUrl,
-        prompt,
-        num_images: 1,
-        image_size: 'portrait_16_9',
-      },
+      input: reduxInput as never,
     })
 
     const frameUrl = (result.data as any)?.images?.[0]?.url
