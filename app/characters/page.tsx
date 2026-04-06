@@ -140,10 +140,7 @@ export default function Characters() {
                 </div>
                 <div>
                   <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-2">外貌 JSON</div>
-                  <textarea value={appearanceJson} onChange={e => setAppearanceJson(e.target.value)} placeholder={'{
-  "hair": "short bob, dark brown",
-  "face": "delicate features"
-}'} rows={5} className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2.5 text-xs font-mono text-green-400 outline-none focus:border-[#e8d5b0] transition-colors resize-none" />
+                  <textarea value={appearanceJson} onChange={e => setAppearanceJson(e.target.value)} placeholder={'{\n  "hair": "short bob, dark brown",\n  "face": "delicate features"\n}'} rows={5} className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2.5 text-xs font-mono text-green-400 outline-none focus:border-[#e8d5b0] transition-colors resize-none" />
                 </div>
                 <div className="flex gap-3">
                   <button onClick={generateCharacterImage} disabled={generating} className="flex-1 py-2.5 border border-[#e8d5b0] rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0] hover:bg-[#e8d5b0] hover:text-[#0a0a0a] transition-all disabled:opacity-40">{generating ? '⏳ 生成中...' : '✨ AI 生成圖片'}</button>
