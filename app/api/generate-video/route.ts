@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
         prompt,
         aspect_ratio: '9:16',
         duration: '5',
+        generate_audio: false,
       }),
     })
 
