@@ -647,7 +647,7 @@ async function fetchLipSyncResult(index: number) {
     {shot.frameUrl && (
       <div className="mb-2">
         <div className="text-[10px] text-[#555] font-bold uppercase tracking-widest mb-1">第一格預覽</div>
-        <div className="w-full aspect-[9/16] rounded-xl overflow-hidden">
+        <div className="w-[200px] aspect-[9/16] rounded-xl overflow-hidden mx-auto">
   <img src={shot.frameUrl} alt="frame" className="w-full h-full object-cover" />
 </div>
       </div>
