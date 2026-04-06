@@ -85,22 +85,21 @@ const PRESETS = [
   }
 ]
 
+interface ShotInput {
+  id: string
+  number: number
+  sceneDesc: string
+  shotType: string
+  hasDialogue: boolean
+  dialogue: string
+}
+
 const SHOT_TYPES = [
   'Wide Shot', 'Medium Shot', 'Close-up', 'Extreme Close-up',
   'OTS Shot', 'Insert Shot', 'Reaction Shot', 'Static Shot',
   'Tracking Shot', 'POV Shot'
 ]
 
-interface Shot {
-  number: number
-  type: string
-  emotion: string
-  prompt: string
-  camera_setting: string
-  videoUrl?: string
-  videoStatus?: 'idle' | 'generating' | 'done' | 'error'
-  requestId?: string
-}
 
 interface Character {
   id: string
@@ -126,6 +125,9 @@ interface Shot {
   videoUrl?: string
   videoStatus?: 'idle' | 'generating' | 'done' | 'error'
   requestId?: string
+  lipSyncUrl?: string
+  lipSyncStatus?: 'idle' | 'uploading' | 'generating' | 'done' | 'error'
+  lipSyncRequestId?: string
 }
 
 export default function Home() {
@@ -282,6 +284,66 @@ async function loadData() {
     }
   }
 
+  async function handleLipSync(index: number, file: File) {
+  setShots(prev => { const n = [...prev]; n[index] = { ...n[index], lipSyncStatus: 'uploading' }; return n })
+
+  try {
+    // 上傳音頻
+    const formData = new FormData()
+    formData.append('file', file)
+    const uploadRes = await fetch('/api/upload-audio', {
+      method: 'POST',
+      body: formData,
+    })
+    const uploadData = await uploadRes.json()
+    if (uploadData.error) throw new Error(uploadData.error)
+    const audioUrl = uploadData.url
+
+    // 開始 Lip Sync
+    setShots(prev => { const n = [...prev]; n[index] = { ...n[index], lipSyncStatus: 'generating' }; return n })
+
+    const lipSyncRes = await fetch('/api/lip-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        videoUrl: shots[index].videoUrl,
+        audioUrl,
+      }),
+    })
+    const lipSyncData = await lipSyncRes.json()
+    if (lipSyncData.error) throw new Error(lipSyncData.error)
+
+    setShots(prev => { const n = [...prev]; n[index] = { ...n[index], lipSyncRequestId: lipSyncData.request_id }; return n })
+
+  } catch (err: unknown) {
+    setShots(prev => { const n = [...prev]; n[index] = { ...n[index], lipSyncStatus: 'error' }; return n })
+    setError(err instanceof Error ? err.message : 'Lip Sync 失敗')
+  }
+}
+
+async function fetchLipSyncResult(index: number) {
+  const shot = shots[index]
+  if (!shot.lipSyncRequestId) return
+
+  try {
+    const res = await fetch('/api/check-lip-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId: shot.lipSyncRequestId }),
+    })
+    const data = await res.json()
+
+    if (data.status === 'COMPLETED') {
+      const lipSyncUrl = data.output?.video?.url
+      setShots(prev => { const n = [...prev]; n[index] = { ...n[index], lipSyncStatus: 'done', lipSyncUrl }; return n })
+    } else {
+      setError(`Shot ${shot.number} Lip Sync 仍然生成緊，請等多一陣`)
+    }
+  } catch (err: unknown) {
+    setError(err instanceof Error ? err.message : '查詢失敗')
+  }
+}
+  
   async function copyPrompt(index: number) {
     await navigator.clipboard.writeText(shots[index].prompt)
     setCopied(index)
@@ -567,14 +629,60 @@ async function loadData() {
                         </>
                       )}
                       {shot.videoStatus === 'done' && shot.videoUrl && (
-                        <div className="space-y-3">
-                          <video src={shot.videoUrl} controls className="w-full rounded-xl max-h-[500px]" />
-                          <a href={shot.videoUrl} download target="_blank" rel="noreferrer"
-                            className="block w-full py-2.5 bg-[#e8d5b0] text-[#0a0a0a] rounded-xl text-xs font-bold tracking-widest uppercase text-center hover:opacity-90 transition-all">
-                            ⬇️ 下載影片
-                          </a>
-                        </div>
-                      )}
+  <div className="space-y-3">
+    <video src={shot.lipSyncUrl || shot.videoUrl} controls className="w-full rounded-xl max-h-[500px]" />
+    <a href={shot.lipSyncUrl || shot.videoUrl} download target="_blank" rel="noreferrer"
+      className="block w-full py-2.5 bg-[#e8d5b0] text-[#0a0a0a] rounded-xl text-xs font-bold tracking-widest uppercase text-center hover:opacity-90 transition-all">
+      ⬇️ 下載影片
+    </a>
+
+    {/* Lip Sync Section */}
+    <div className="border-t border-[#222] pt-3">
+      <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-2">🎤 Lip Sync 配音</div>
+
+      {(!shot.lipSyncStatus || shot.lipSyncStatus === 'idle') && (
+        <label className="block w-full py-2.5 border border-dashed border-[#333] rounded-xl text-xs text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all cursor-pointer text-center">
+          📁 上傳配音檔案（MP3/WAV）
+          <input type="file" accept="audio/*" className="hidden"
+            onChange={e => {
+              const file = e.target.files?.[0]
+              if (file) handleLipSync(i, file)
+            }} />
+        </label>
+      )}
+
+      {shot.lipSyncStatus === 'uploading' && (
+        <div className="w-full py-2.5 border border-[#e8d5b0]/30 rounded-xl text-xs text-[#e8d5b0]/50 text-center animate-pulse">
+          ⬆️ 上傳配音中...
+        </div>
+      )}
+
+      {shot.lipSyncStatus === 'generating' && (
+        <>
+          <div className="w-full py-2.5 border border-[#e8d5b0]/30 rounded-xl text-xs text-[#e8d5b0]/50 text-center animate-pulse mb-2">
+            ⏳ Lip Sync 生成中... 約需 2-3 分鐘
+          </div>
+          <button onClick={() => fetchLipSyncResult(i)}
+            className="w-full py-2.5 bg-[#1a1a1a] border border-[#e8d5b0] rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0] hover:bg-[#e8d5b0] hover:text-[#0a0a0a] transition-all">
+            🔍 查詢 Lip Sync 結果
+          </button>
+        </>
+      )}
+
+      {shot.lipSyncStatus === 'done' && shot.lipSyncUrl && (
+        <div className="text-xs text-green-400 text-center py-2">
+          ✅ Lip Sync 完成！影片已更新
+        </div>
+      )}
+
+      {shot.lipSyncStatus === 'error' && (
+        <div className="text-xs text-red-400 text-center py-2">
+          Lip Sync 失敗，請重試
+        </div>
+      )}
+    </div>
+  </div>
+)}
                       {shot.videoStatus === 'error' && (
                         <div className="flex flex-col gap-2">
                           <div className="w-full py-3 border border-red-800/40 rounded-xl text-xs text-red-400 text-center">生成失敗</div>
