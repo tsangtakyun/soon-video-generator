@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { fal } from '@fal-ai/client'
 
 export async function POST(req: NextRequest) {
   try {
@@ -7,17 +8,34 @@ export async function POST(req: NextRequest) {
     const falApiKey = process.env.FAL_API_KEY
     if (!falApiKey) throw new Error('Missing FAL_API_KEY')
 
+    fal.config({ credentials: falApiKey })
+
+    let uploadedImageUrl: string | null = null
+
+    // 如果係 base64，先上傳到 fal.ai storage
+    if (elementImageUrl && elementImageUrl.startsWith('data:')) {
+      const response = await fetch(elementImageUrl)
+      const blob = await response.blob()
+      const file = new File([blob], 'character.jpg', { type: blob.type })
+      uploadedImageUrl = await fal.storage.upload(file)
+      console.log('Uploaded element image:', uploadedImageUrl)
+    } else if (elementImageUrl) {
+      uploadedImageUrl = elementImageUrl
+    }
+
     const body: Record<string, unknown> = {
-      prompt: elementImageUrl ? `${prompt} @Element1` : prompt,
+      prompt: uploadedImageUrl ? `${prompt}, @Element1 is the main character` : prompt,
       aspect_ratio: '9:16',
       duration: '5',
       generate_audio: false,
     }
 
-    if (elementImageUrl) {
+    if (uploadedImageUrl) {
       body.elements = [
         {
-          images: [{ image_url: elementImageUrl }]
+          images: [
+            { image_url: uploadedImageUrl }
+          ]
         }
       ]
     }
@@ -32,14 +50,14 @@ export async function POST(req: NextRequest) {
     })
 
     const data = await response.json()
-    console.log('Generate video response:', JSON.stringify(data).substring(0, 300))
+    console.log('Response:', JSON.stringify(data).substring(0, 300))
     if (!response.ok) throw new Error(data.detail || JSON.stringify(data))
 
     return NextResponse.json({ request_id: data.request_id })
 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error'
-    console.error('Generate video error:', message)
+    console.error('Error:', message)
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
