@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
     const result = await fal.subscribe('fal-ai/flux/dev/redux', {
       input: {
         image_url: imageUrl,
+        prompt,
         num_images: 1,
         image_size: 'portrait_16_9',
       },

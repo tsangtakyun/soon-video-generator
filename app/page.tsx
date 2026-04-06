@@ -100,13 +100,13 @@ const SHOT_TYPES = [
   'Tracking Shot', 'POV Shot'
 ]
 
-
 interface Character {
   id: string
   name: string
   description: string
   appearanceJson: string
   imageUrl: string
+  loraUrl?: string
 }
 
 interface Scene {
@@ -122,6 +122,7 @@ interface Shot {
   emotion: string
   prompt: string
   camera_setting: string
+  frameApproved?: boolean
   videoUrl?: string
   videoStatus?: 'idle' | 'generating' | 'done' | 'error'
   requestId?: string
@@ -150,33 +151,37 @@ export default function Home() {
   const [scenes, setScenes] = useState<Scene[]>([])
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null)
   const [showScenePicker, setShowScenePicker] = useState(false)
+  const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([])
 
   useEffect(() => {
-  loadData()
-}, [])
+    loadData()
+  }, [])
 
-async function loadData() {
-  const { data: chars } = await supabase.from('characters').select('*').order('created_at', { ascending: true })
-  if (chars) {
-    setCharacters(chars.map(c => ({
-      id: c.id,
-      name: c.name,
-      description: c.description || '',
-      appearanceJson: c.appearance_json || '',
-      imageUrl: c.image_url || '',
-    })))
+  async function loadData() {
+    const { data: chars } = await supabase.from('characters').select('*').order('created_at', { ascending: true })
+    if (chars) {
+      setCharacters(chars.map(c => ({
+        id: c.id,
+        name: c.name,
+        description: c.description || '',
+        appearanceJson: c.appearance_json || '',
+        imageUrl: c.image_url || '',
+        loraUrl: c.lora_url || '',
+      })))
+    }
+
+    const { data: sceneData } = await supabase.from('scenes').select('*').order('created_at', { ascending: true })
+    if (sceneData) {
+      setScenes(sceneData.map(s => ({
+        id: s.id,
+        name: s.name,
+        description: s.description || '',
+        imageUrl: s.image_url || '',
+      })))
+    }
   }
 
-  const { data: sceneData } = await supabase.from('scenes').select('*').order('created_at', { ascending: true })
-  if (sceneData) {
-    setScenes(sceneData.map(s => ({
-      id: s.id,
-      name: s.name,
-      description: s.description || '',
-      imageUrl: s.image_url || '',
-    })))
-  }
-}
+  const activeCharacters = characters.filter(character => selectedCharacterIds.includes(character.id))
 
   function selectPreset(preset: typeof PRESETS[0]) {
     setSelectedPreset(preset)
@@ -212,9 +217,17 @@ async function loadData() {
     setShotInputs(prev => prev.map(s => s.id === id ? { ...s, [field]: value } : s))
   }
 
+  function toggleCharacter(id: string) {
+    setSelectedCharacterIds(prev => prev.includes(id)
+      ? prev.filter(characterId => characterId !== id)
+      : [...prev, id]
+    )
+  }
+
   async function generatePrompts() {
     const validShots = shotInputs.filter(s => s.sceneDesc.trim())
     if (validShots.length === 0) { setError('請至少填寫一個 Shot 嘅場景描述'); return }
+    if (selectedCharacterIds.length === 0) { setError('請至少鎖定一個角色，先開始生成'); return }
     setError('')
     setGenerating(true)
     setShots([])
@@ -226,7 +239,7 @@ async function loadData() {
         body: JSON.stringify({
           shotInputs: validShots,
           styleJson: getActiveJson(),
-          characters: characters.map(c => ({
+          characters: activeCharacters.map(c => ({
             name: c.name,
             description: c.description,
             appearanceJson: c.appearanceJson
@@ -236,7 +249,12 @@ async function loadData() {
       })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
-      setShots(data.shots.map((s: Shot) => ({ ...s, videoStatus: 'idle' })))
+      setShots(data.shots.map((s: Shot) => ({
+        ...s,
+        frameStatus: 'idle',
+        frameApproved: false,
+        videoStatus: 'idle',
+      })))
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '生成失敗')
     } finally {
@@ -245,26 +263,38 @@ async function loadData() {
   }
 
   async function generateVideo(index: number, frameImageUrl?: string) {
-  setShots(prev => { const n = [...prev]; n[index] = { ...n[index], videoStatus: 'generating', usedFrame: !!frameImageUrl }; return n })
-  try {
-    const endpoint = frameImageUrl ? '/api/image-to-video' : '/api/generate-video'
-    const body = frameImageUrl
-      ? { prompt: shots[index].prompt, imageUrl: frameImageUrl }
-      : { prompt: shots[index].prompt }
-
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+    setShots(prev => {
+      const n = [...prev]
+      n[index] = { ...n[index], videoStatus: 'generating', usedFrame: !!frameImageUrl }
+      return n
     })
-    const data = await res.json()
-    if (data.error) throw new Error(data.error)
-    setShots(prev => { const n = [...prev]; n[index] = { ...n[index], requestId: data.request_id }; return n })
-  } catch (err: unknown) {
-    setShots(prev => { const n = [...prev]; n[index] = { ...n[index], videoStatus: 'error' }; return n })
-    setError(err instanceof Error ? err.message : '影片生成失敗')
+    try {
+      const endpoint = frameImageUrl ? '/api/image-to-video' : '/api/generate-video'
+      const body = frameImageUrl
+        ? { prompt: shots[index].prompt, imageUrl: frameImageUrl }
+        : { prompt: shots[index].prompt }
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      setShots(prev => {
+        const n = [...prev]
+        n[index] = { ...n[index], requestId: data.request_id }
+        return n
+      })
+    } catch (err: unknown) {
+      setShots(prev => {
+        const n = [...prev]
+        n[index] = { ...n[index], videoStatus: 'error' }
+        return n
+      })
+      setError(err instanceof Error ? err.message : '影片生成失敗')
+    }
   }
-}
 
   async function fetchResult(index: number) {
     const shot = shots[index]
@@ -272,7 +302,7 @@ async function loadData() {
     setFetchingResult(index)
     try {
       const endpoint = shot.usedFrame ? '/api/check-image-video' : '/api/check-video'
-const res = await fetch(endpoint, {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ requestId: shot.requestId }),
@@ -280,7 +310,11 @@ const res = await fetch(endpoint, {
       const data = await res.json()
       if (data.status === 'COMPLETED') {
         const videoUrl = data.output?.video?.url
-        setShots(prev => { const n = [...prev]; n[index] = { ...n[index], videoStatus: 'done', videoUrl }; return n })
+        setShots(prev => {
+          const n = [...prev]
+          n[index] = { ...n[index], videoStatus: 'done', videoUrl }
+          return n
+        })
       } else if (data.status === 'IN_QUEUE' || data.status === 'IN_PROGRESS') {
         setError(`Shot ${shot.number} 仍然生成緊，請等多一陣再查詢`)
       } else {
@@ -294,88 +328,127 @@ const res = await fetch(endpoint, {
   }
 
   async function handleLipSync(index: number, file: File) {
-  setShots(prev => { const n = [...prev]; n[index] = { ...n[index], lipSyncStatus: 'uploading' }; return n })
-
-  try {
-    // 上傳音頻
-    const formData = new FormData()
-    formData.append('file', file)
-    const uploadRes = await fetch('/api/upload-audio', {
-      method: 'POST',
-      body: formData,
+    setShots(prev => {
+      const n = [...prev]
+      n[index] = { ...n[index], lipSyncStatus: 'uploading' }
+      return n
     })
-    const uploadData = await uploadRes.json()
-    if (uploadData.error) throw new Error(uploadData.error)
-    const audioUrl = uploadData.url
 
-    // 開始 Lip Sync
-    setShots(prev => { const n = [...prev]; n[index] = { ...n[index], lipSyncStatus: 'generating' }; return n })
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const uploadRes = await fetch('/api/upload-audio', {
+        method: 'POST',
+        body: formData,
+      })
+      const uploadData = await uploadRes.json()
+      if (uploadData.error) throw new Error(uploadData.error)
+      const audioUrl = uploadData.url
 
-    const lipSyncRes = await fetch('/api/lip-sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        videoUrl: shots[index].videoUrl,
-        audioUrl,
-      }),
-    })
-    const lipSyncData = await lipSyncRes.json()
-    if (lipSyncData.error) throw new Error(lipSyncData.error)
+      setShots(prev => {
+        const n = [...prev]
+        n[index] = { ...n[index], lipSyncStatus: 'generating' }
+        return n
+      })
 
-    setShots(prev => { const n = [...prev]; n[index] = { ...n[index], lipSyncRequestId: lipSyncData.request_id }; return n })
+      const lipSyncRes = await fetch('/api/lip-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoUrl: shots[index].videoUrl,
+          audioUrl,
+        }),
+      })
+      const lipSyncData = await lipSyncRes.json()
+      if (lipSyncData.error) throw new Error(lipSyncData.error)
 
-  } catch (err: unknown) {
-    setShots(prev => { const n = [...prev]; n[index] = { ...n[index], lipSyncStatus: 'error' }; return n })
-    setError(err instanceof Error ? err.message : 'Lip Sync 失敗')
-  }
-}
-
-async function fetchLipSyncResult(index: number) {
-  const shot = shots[index]
-  if (!shot.lipSyncRequestId) return
-
-  try {
-    const res = await fetch('/api/check-lip-sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestId: shot.lipSyncRequestId }),
-    })
-    const data = await res.json()
-
-    if (data.status === 'COMPLETED') {
-      const lipSyncUrl = data.output?.video?.url
-      setShots(prev => { const n = [...prev]; n[index] = { ...n[index], lipSyncStatus: 'done', lipSyncUrl }; return n })
-    } else {
-      setError(`Shot ${shot.number} Lip Sync 仍然生成緊，請等多一陣`)
+      setShots(prev => {
+        const n = [...prev]
+        n[index] = { ...n[index], lipSyncRequestId: lipSyncData.request_id }
+        return n
+      })
+    } catch (err: unknown) {
+      setShots(prev => {
+        const n = [...prev]
+        n[index] = { ...n[index], lipSyncStatus: 'error' }
+        return n
+      })
+      setError(err instanceof Error ? err.message : 'Lip Sync 失敗')
     }
-  } catch (err: unknown) {
-    setError(err instanceof Error ? err.message : '查詢失敗')
   }
-}
+
+  async function fetchLipSyncResult(index: number) {
+    const shot = shots[index]
+    if (!shot.lipSyncRequestId) return
+
+    try {
+      const res = await fetch('/api/check-lip-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId: shot.lipSyncRequestId }),
+      })
+      const data = await res.json()
+
+      if (data.status === 'COMPLETED') {
+        const lipSyncUrl = data.output?.video?.url
+        setShots(prev => {
+          const n = [...prev]
+          n[index] = { ...n[index], lipSyncStatus: 'done', lipSyncUrl }
+          return n
+        })
+      } else {
+        setError(`Shot ${shot.number} Lip Sync 仍然生成緊，請等多一陣`)
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '查詢失敗')
+    }
+  }
 
   async function generateFrame(index: number, characterImageUrl: string) {
-  setShots(prev => { const n = [...prev]; n[index] = { ...n[index], frameStatus: 'generating' }; return n })
-  try {
-    const shot = shots[index]
-    const framePrompt = `${shot.type}, ${shot.prompt}, first frame composition`
-    
-    const res = await fetch('/api/generate-frame', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        characterImageUrl,
-        prompt: framePrompt,
-      }),
+    setShots(prev => {
+      const n = [...prev]
+      n[index] = { ...n[index], frameStatus: 'generating' }
+      return n
     })
-    const data = await res.json()
-    if (data.error) throw new Error(data.error)
-    setShots(prev => { const n = [...prev]; n[index] = { ...n[index], frameStatus: 'done', frameUrl: data.frameUrl }; return n })
-  } catch (err: unknown) {
-    setShots(prev => { const n = [...prev]; n[index] = { ...n[index], frameStatus: 'error' }; return n })
-    setError(err instanceof Error ? err.message : '生成第一格失敗')
+    try {
+      const shot = shots[index]
+      const framePrompt = `${shot.type}, ${shot.prompt}, first frame composition`
+      const selectedCharacter = activeCharacters.find(character => character.imageUrl === characterImageUrl)
+
+      const res = await fetch('/api/generate-frame', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          characterImageUrl,
+          prompt: framePrompt,
+          loraUrl: selectedCharacter?.loraUrl,
+        }),
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      setShots(prev => {
+        const n = [...prev]
+        n[index] = { ...n[index], frameStatus: 'done', frameUrl: data.frameUrl, frameApproved: false }
+        return n
+      })
+    } catch (err: unknown) {
+      setShots(prev => {
+        const n = [...prev]
+        n[index] = { ...n[index], frameStatus: 'error' }
+        return n
+      })
+      setError(err instanceof Error ? err.message : '生成第一格失敗')
+    }
   }
-}
-  
+
+  function approveFrame(index: number) {
+    setShots(prev => {
+      const next = [...prev]
+      next[index] = { ...next[index], frameApproved: true }
+      return next
+    })
+  }
+
   async function copyPrompt(index: number) {
     await navigator.clipboard.writeText(shots[index].prompt)
     setCopied(index)
@@ -391,7 +464,6 @@ async function fetchLipSyncResult(index: number) {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#e8e8e8] font-sans">
-
       <header className="border-b border-[#222] px-8 py-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="text-xl font-serif text-[#e8d5b0] tracking-wide">SOON</span>
@@ -415,17 +487,12 @@ async function fetchLipSyncResult(index: number) {
       </header>
 
       <div className="grid grid-cols-[440px_1fr] min-h-[calc(100vh-73px)]">
-
-        {/* LEFT */}
         <div className="border-r border-[#222] p-6 flex flex-col gap-5 overflow-y-auto">
-
-          {/* 場景參考圖 */}
           <div className="bg-[#111] border border-[#222] rounded-xl p-4">
             <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-3">場景參考圖</div>
             {selectedScene ? (
               <div className="flex items-center gap-3 bg-[#0a0a0a] border border-[#e8d5b0]/30 rounded-xl p-3">
-                <img src={selectedScene.imageUrl} alt={selectedScene.name}
-                  className="w-10 h-10 rounded-lg object-cover" />
+                <img src={selectedScene.imageUrl} alt={selectedScene.name} className="w-10 h-10 rounded-lg object-cover" />
                 <div className="flex-1">
                   <div className="text-xs font-bold text-[#e8d5b0]">{selectedScene.name}</div>
                   <div className="text-[10px] text-[#555]">{selectedScene.description || '場景已設定'}</div>
@@ -434,15 +501,13 @@ async function fetchLipSyncResult(index: number) {
               </div>
             ) : (
               <div className="relative">
-                <button onClick={() => setShowScenePicker(!showScenePicker)}
-                  className="w-full py-2 border border-dashed border-[#333] rounded-xl text-xs text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all">
+                <button onClick={() => setShowScenePicker(!showScenePicker)} className="w-full py-2 border border-dashed border-[#333] rounded-xl text-xs text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all">
                   🏠 {scenes.length > 0 ? '選擇場景參考圖（可選）' : '先去場景庫新增場景'}
                 </button>
                 {showScenePicker && scenes.length > 0 && (
                   <div className="absolute top-full left-0 right-0 mt-2 bg-[#1a1a1a] border border-[#333] rounded-xl overflow-hidden z-10">
                     {scenes.map(s => (
-                      <button key={s.id} onClick={() => { setSelectedScene(s); setShowScenePicker(false) }}
-                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#222] transition-all text-left">
+                      <button key={s.id} onClick={() => { setSelectedScene(s); setShowScenePicker(false) }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#222] transition-all text-left">
                         <img src={s.imageUrl} alt={s.name} className="w-8 h-8 rounded-lg object-cover" />
                         <div className="text-xs font-bold text-[#e8e8e8]">{s.name}</div>
                       </button>
@@ -453,17 +518,47 @@ async function fetchLipSyncResult(index: number) {
             )}
           </div>
 
-          {/* 電影風格 */}
+          <div className="bg-[#111] border border-[#222] rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-[10px] font-bold tracking-widest uppercase text-[#555]">角色鎖定</div>
+              <span className="text-[10px] text-[#444]">{selectedCharacterIds.length} 個角色</span>
+            </div>
+            {characters.length === 0 ? (
+              <div className="text-xs text-[#555]">請先去角色庫建立角色 reference。</div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {characters.map(character => {
+                  const selected = selectedCharacterIds.includes(character.id)
+                  return (
+                    <button
+                      key={character.id}
+                      onClick={() => toggleCharacter(character.id)}
+                      className={`px-3 py-2 rounded-xl border text-xs transition-all ${
+                        selected
+                          ? 'border-[#e8d5b0] bg-[#e8d5b0]/10 text-[#e8d5b0]'
+                          : 'border-[#222] text-[#666] hover:border-[#444] hover:text-[#e8e8e8]'
+                      }`}
+                    >
+                      {character.name}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            <div className="text-[10px] text-[#444] mt-3 leading-relaxed">
+              建議只鎖定今次場景真正會出現嘅角色，避免 prompt 同 reference 太亂，令人物樣貌漂走。
+            </div>
+          </div>
+
           <div className="bg-[#111] border border-[#222] rounded-xl p-4">
             <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-3">電影風格</div>
             <div className="grid grid-cols-3 gap-2 mb-3">
               {PRESETS.map(preset => (
-                <button key={preset.key} onClick={() => selectPreset(preset)}
-                  className={`p-2.5 rounded-xl border text-left transition-all ${
-                    selectedPreset.key === preset.key && !isCustom
-                      ? 'border-[#e8d5b0] bg-[#e8d5b0]/10'
-                      : 'border-[#222] hover:border-[#444]'
-                  }`}>
+                <button key={preset.key} onClick={() => selectPreset(preset)} className={`p-2.5 rounded-xl border text-left transition-all ${
+                  selectedPreset.key === preset.key && !isCustom
+                    ? 'border-[#e8d5b0] bg-[#e8d5b0]/10'
+                    : 'border-[#222] hover:border-[#444]'
+                }`}>
                   <div className="text-base mb-0.5">{preset.emoji}</div>
                   <div className={`text-[10px] font-bold ${selectedPreset.key === preset.key && !isCustom ? 'text-[#e8d5b0]' : 'text-[#e8e8e8]'}`}>
                     {preset.name}
@@ -471,22 +566,16 @@ async function fetchLipSyncResult(index: number) {
                 </button>
               ))}
             </div>
-            <button onClick={() => setIsCustom(!isCustom)}
-              className={`w-full py-1.5 rounded-lg border text-[10px] font-bold tracking-widest uppercase transition-all ${
-                isCustom ? 'border-[#e8d5b0] text-[#e8d5b0]' : 'border-[#222] text-[#555] hover:border-[#444]'
-              }`}>
+            <button onClick={() => setIsCustom(!isCustom)} className={`w-full py-1.5 rounded-lg border text-[10px] font-bold tracking-widest uppercase transition-all ${
+              isCustom ? 'border-[#e8d5b0] text-[#e8d5b0]' : 'border-[#222] text-[#555] hover:border-[#444]'
+            }`}>
               ✏️ 自訂 JSON
             </button>
             {isCustom && (
-              <textarea value={customJson} onChange={e => setCustomJson(e.target.value)}
-                placeholder={JSON.stringify(selectedPreset.json, null, 2)}
-                rows={6}
-                className="w-full mt-2 bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2 text-[10px] font-mono text-green-400 outline-none focus:border-[#e8d5b0] transition-colors resize-none"
-              />
+              <textarea value={customJson} onChange={e => setCustomJson(e.target.value)} placeholder={JSON.stringify(selectedPreset.json, null, 2)} rows={6} className="w-full mt-2 bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2 text-[10px] font-mono text-green-400 outline-none focus:border-[#e8d5b0] transition-colors resize-none" />
             )}
           </div>
 
-          {/* Shots 輸入 */}
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div className="text-[10px] font-bold tracking-widest uppercase text-[#555]">Shot 列表</div>
@@ -495,44 +584,26 @@ async function fetchLipSyncResult(index: number) {
 
             {shotInputs.map((shot) => (
               <div key={shot.id} className="bg-[#111] border border-[#222] rounded-xl overflow-hidden">
-
-                {/* Shot Header */}
                 <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1a1a1a]">
                   <div className="flex items-center gap-2">
-                    <span className="bg-[#e8d5b0] text-[#0a0a0a] text-[10px] font-bold px-2 py-0.5 rounded-full font-mono">
-                      Shot {shot.number}
-                    </span>
-                    <select
-                      value={shot.shotType}
-                      onChange={e => updateShot(shot.id, 'shotType', e.target.value)}
-                      className="bg-transparent text-[10px] text-[#c0392b] font-bold uppercase tracking-widest outline-none cursor-pointer">
+                    <span className="bg-[#e8d5b0] text-[#0a0a0a] text-[10px] font-bold px-2 py-0.5 rounded-full font-mono">Shot {shot.number}</span>
+                    <select value={shot.shotType} onChange={e => updateShot(shot.id, 'shotType', e.target.value)} className="bg-transparent text-[10px] text-[#c0392b] font-bold uppercase tracking-widest outline-none cursor-pointer">
                       {SHOT_TYPES.map(t => <option key={t} value={t} className="bg-[#1a1a1a]">{t}</option>)}
                     </select>
                   </div>
                   {shotInputs.length > 1 && (
-                    <button onClick={() => removeShot(shot.id)}
-                      className="text-[#333] hover:text-red-400 text-xs transition-all">✕</button>
+                    <button onClick={() => removeShot(shot.id)} className="text-[#333] hover:text-red-400 text-xs transition-all">✕</button>
                   )}
                 </div>
 
-                {/* Scene Desc */}
                 <div className="px-4 pt-3">
-                  <textarea
-                    value={shot.sceneDesc}
-                    onChange={e => updateShot(shot.id, 'sceneDesc', e.target.value)}
-                    placeholder="場景描述...（例如：Mia 冷冷地執嘢，阿俊靠牆站）"
-                    rows={2}
-                    className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2 text-xs text-[#e8e8e8] outline-none focus:border-[#e8d5b0] transition-colors resize-none placeholder:text-[#333]"
-                  />
+                  <textarea value={shot.sceneDesc} onChange={e => updateShot(shot.id, 'sceneDesc', e.target.value)} placeholder="場景描述...（例如：Mia 冷冷地執嘢，阿俊靠牆站）" rows={2} className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2 text-xs text-[#e8e8e8] outline-none focus:border-[#e8d5b0] transition-colors resize-none placeholder:text-[#333]" />
                 </div>
 
-                {/* Dialogue Toggle */}
                 <div className="px-4 py-2">
-                  <button
-                    onClick={() => updateShot(shot.id, 'hasDialogue', !shot.hasDialogue)}
-                    className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest transition-all ${
-                      shot.hasDialogue ? 'text-[#e8d5b0]' : 'text-[#444]'
-                    }`}>
+                  <button onClick={() => updateShot(shot.id, 'hasDialogue', !shot.hasDialogue)} className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest transition-all ${
+                    shot.hasDialogue ? 'text-[#e8d5b0]' : 'text-[#444]'
+                  }`}>
                     <div className={`w-3 h-3 rounded-sm border transition-all ${
                       shot.hasDialogue ? 'bg-[#e8d5b0] border-[#e8d5b0]' : 'border-[#333]'
                     }`} />
@@ -540,43 +611,29 @@ async function fetchLipSyncResult(index: number) {
                   </button>
                 </div>
 
-                {/* Dialogue Input */}
                 {shot.hasDialogue && (
                   <div className="px-4 pb-3">
-                    <textarea
-                      value={shot.dialogue}
-                      onChange={e => updateShot(shot.id, 'dialogue', e.target.value)}
-                      placeholder={`Mia：「我唔想同你一齊瞓...」\n阿俊：「好...如果咁樣你好過啲...」`}
-                      rows={3}
-                      className="w-full bg-[#0a0a0a] border border-[#e8d5b0]/20 rounded-lg px-3 py-2 text-xs text-[#e8e8e8] outline-none focus:border-[#e8d5b0] transition-colors resize-none placeholder:text-[#333] font-mono"
-                    />
+                    <textarea value={shot.dialogue} onChange={e => updateShot(shot.id, 'dialogue', e.target.value)} placeholder={`Mia：「我唔想同你一齊瞓...」\n阿俊：「好...如果咁樣你好過啲...」`} rows={3} className="w-full bg-[#0a0a0a] border border-[#e8d5b0]/20 rounded-lg px-3 py-2 text-xs text-[#e8e8e8] outline-none focus:border-[#e8d5b0] transition-colors resize-none placeholder:text-[#333] font-mono" />
                   </div>
                 )}
-
               </div>
             ))}
 
-            {/* Add Shot */}
-            <button onClick={addShot}
-              className="w-full py-2.5 border border-dashed border-[#333] rounded-xl text-xs text-[#444] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all">
+            <button onClick={addShot} className="w-full py-2.5 border border-dashed border-[#333] rounded-xl text-xs text-[#444] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all">
               + 新增 Shot
             </button>
           </div>
 
-          {/* Generate Button */}
-          <button onClick={generatePrompts} disabled={generating}
-            className="w-full py-4 bg-[#e8d5b0] text-[#0a0a0a] rounded-xl font-bold text-sm tracking-widest uppercase hover:opacity-90 transition-all disabled:opacity-40 disabled:cursor-not-allowed sticky bottom-0">
+          <button onClick={generatePrompts} disabled={generating} className="w-full py-4 bg-[#e8d5b0] text-[#0a0a0a] rounded-xl font-bold text-sm tracking-widest uppercase hover:opacity-90 transition-all disabled:opacity-40 disabled:cursor-not-allowed sticky bottom-0">
             {generating ? '⏳ Claude 生成中...' : '🎬 生成 Kling Prompts'}
           </button>
         </div>
 
-        {/* RIGHT */}
         <div className="p-8 overflow-y-auto">
           <div className="flex items-center justify-between mb-8">
             <h1 className="text-3xl font-serif text-[#e8d5b0] italic">生成結果</h1>
             {shots.length > 0 && (
-              <button onClick={copyAll}
-                className="px-4 py-2 rounded-full border border-[#222] text-xs font-bold tracking-widest uppercase text-[#555] hover:text-[#e8d5b0] hover:border-[#e8d5b0] transition-all">
+              <button onClick={copyAll} className="px-4 py-2 rounded-full border border-[#222] text-xs font-bold tracking-widest uppercase text-[#555] hover:text-[#e8d5b0] hover:border-[#e8d5b0] transition-all">
                 {copiedAll ? '✅ 已複製全部' : '複製全部 Prompts'}
               </button>
             )}
@@ -593,9 +650,7 @@ async function fetchLipSyncResult(index: number) {
             <div className="flex flex-col items-center justify-center min-h-[400px] gap-4 text-center">
               <div className="text-5xl opacity-20">🎥</div>
               <div className="text-2xl font-serif text-[#444] italic">準備好開始了</div>
-              <div className="text-sm text-[#333] max-w-xs leading-relaxed">
-                填寫每個 Shot 嘅場景描述，選擇電影風格，然後生成 Prompts
-              </div>
+              <div className="text-sm text-[#333] max-w-xs leading-relaxed">填寫每個 Shot 嘅場景描述，選擇電影風格，然後生成 Prompts</div>
             </div>
           )}
 
@@ -617,20 +672,22 @@ async function fetchLipSyncResult(index: number) {
                 </div>
               </div>
 
+              <div className="bg-[#111] border border-[#e8d5b0]/20 rounded-xl px-5 py-4 mb-6 text-xs text-[#bbb] leading-relaxed">
+                建議流程：先為每個 Shot 生成第一格，確認角色樣貌、服裝同場景都啱，再用該第一格去生成影片。直接文字生片會快，但人物最容易走樣。
+              </div>
+
               <div className="flex flex-col gap-5">
                 {shots.map((shot, i) => (
                   <div key={i} className="bg-[#111] border border-[#222] rounded-2xl overflow-hidden">
-
                     <div className="flex items-center justify-between px-5 py-4 border-b border-[#222]">
                       <div className="flex items-center gap-3">
                         <span className="bg-[#e8d5b0] text-[#0a0a0a] text-xs font-bold px-3 py-1 rounded-full font-mono">Shot {shot.number}</span>
                         <span className="text-xs font-bold text-[#c0392b] uppercase tracking-widest">{shot.type}</span>
                         <span className="text-xs text-[#555] italic">{shot.emotion}</span>
                       </div>
-                      <button onClick={() => copyPrompt(i)}
-                        className={`px-3 py-1.5 rounded-full border text-xs font-bold transition-all ${
-                          copied === i ? 'border-green-500 text-green-400' : 'border-[#222] text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0]'
-                        }`}>
+                      <button onClick={() => copyPrompt(i)} className={`px-3 py-1.5 rounded-full border text-xs font-bold transition-all ${
+                        copied === i ? 'border-green-500 text-green-400' : 'border-[#222] text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0]'
+                      }`}>
                         {copied === i ? '✅ 已複製' : '📋 複製'}
                       </button>
                     </div>
@@ -640,60 +697,65 @@ async function fetchLipSyncResult(index: number) {
                     </div>
 
                     <div className="px-5 pb-5 flex flex-col gap-3">
-                     {shot.videoStatus === 'idle' && (
-  <div className="flex flex-col gap-2">
+                      {shot.videoStatus === 'idle' && (
+                        <div className="flex flex-col gap-2">
+                          {shot.frameUrl && (
+                            <div className="mb-2">
+                              <div className="text-[10px] text-[#555] font-bold uppercase tracking-widest mb-1">第一格預覽</div>
+                              <div className="w-[200px] aspect-[9/16] rounded-xl overflow-hidden mx-auto">
+                                <img src={shot.frameUrl} alt="frame" className="w-full h-full object-cover" />
+                              </div>
+                              <div className="flex gap-2 mt-2">
+                                <button onClick={() => approveFrame(i)} className={`flex-1 py-2 rounded-xl text-[10px] font-bold tracking-widest uppercase transition-all ${
+                                  shot.frameApproved
+                                    ? 'bg-green-500/20 border border-green-500/40 text-green-400'
+                                    : 'border border-[#e8d5b0] text-[#e8d5b0] hover:bg-[#e8d5b0] hover:text-[#0a0a0a]'
+                                }`}>
+                                  {shot.frameApproved ? '✅ 已確認第一格' : '確認第一格'}
+                                </button>
+                                <button onClick={() => {
+                                  setShots(prev => {
+                                    const next = [...prev]
+                                    next[i] = { ...next[i], frameUrl: undefined, frameStatus: 'idle', frameApproved: false }
+                                    return next
+                                  })
+                                }} className="flex-1 py-2 rounded-xl border border-[#333] text-[10px] font-bold tracking-widest uppercase text-[#666] hover:border-[#444] hover:text-[#e8e8e8] transition-all">
+                                  重生第一格
+                                </button>
+                              </div>
+                            </div>
+                          )}
 
-    {/* 第一格預覽 */}
-    {shot.frameUrl && (
-      <div className="mb-2">
-        <div className="text-[10px] text-[#555] font-bold uppercase tracking-widest mb-1">第一格預覽</div>
-        <div className="w-[200px] aspect-[9/16] rounded-xl overflow-hidden mx-auto">
-  <img src={shot.frameUrl} alt="frame" className="w-full h-full object-cover" />
-</div>
-      </div>
-    )}
+                          {activeCharacters.filter(c => c.imageUrl).length > 0 && !shot.frameUrl && (
+                            <div className="flex flex-col gap-1">
+                              <div className="text-[10px] text-[#555] font-bold uppercase tracking-widest">Step 1 — 生成第一格</div>
+                              {activeCharacters.filter(c => c.imageUrl).map(char => (
+                                <button key={char.id} onClick={() => generateFrame(i, char.imageUrl)} disabled={shot.frameStatus === 'generating'} className="w-full py-2.5 border border-[#333] rounded-xl text-xs font-bold tracking-widest uppercase text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all disabled:opacity-40">
+                                  {shot.frameStatus === 'generating' ? '⏳ 生成第一格中...' : `🖼️ 用 ${char.name} 鎖定第一格`}
+                                </button>
+                              ))}
+                            </div>
+                          )}
 
-    {/* 生成第一格 */}
-    {characters.filter(c => c.imageUrl).length > 0 && (
-      <div className="flex flex-col gap-1">
-        <div className="text-[10px] text-[#555] font-bold uppercase tracking-widest">Step 1 — 生成第一格</div>
-        {characters.filter(c => c.imageUrl).map(char => (
-          <button key={char.id}
-            onClick={() => generateFrame(i, char.imageUrl)}
-            disabled={shot.frameStatus === 'generating'}
-            className="w-full py-2.5 border border-[#333] rounded-xl text-xs font-bold tracking-widest uppercase text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all disabled:opacity-40">
-            {shot.frameStatus === 'generating' ? '⏳ 生成第一格中...' : `🖼️ 用 ${char.name} 生成第一格`}
-          </button>
-        ))}
-      </div>
-    )}
+                          <div className="flex flex-col gap-1">
+                            <div className="text-[10px] text-[#555] font-bold uppercase tracking-widest">Step 2 — 生成影片</div>
+                            {shot.frameUrl ? (
+                              <button onClick={() => generateVideo(i, shot.frameUrl)} disabled={!shot.frameApproved} className="w-full py-3 border border-[#e8d5b0] rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0] hover:bg-[#e8d5b0] hover:text-[#0a0a0a] transition-all">
+                                {shot.frameApproved ? '🎬 用已確認第一格生成影片' : '先確認第一格先可以生成影片'}
+                              </button>
+                            ) : (
+                              <button onClick={() => generateVideo(i)} className="w-full py-3 border border-[#222] rounded-xl text-xs font-bold tracking-widest uppercase text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all">
+                                🎥 直接文字生成（較易走樣）
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
 
-    {/* 生成影片 */}
-    <div className="flex flex-col gap-1">
-      <div className="text-[10px] text-[#555] font-bold uppercase tracking-widest">Step 2 — 生成影片</div>
-      <button onClick={() => generateVideo(i)}
-        className="w-full py-3 border border-[#222] rounded-xl text-xs font-bold tracking-widest uppercase text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all">
-        🎥 Text-to-Video（冇第一格）
-      </button>
-      {shot.frameUrl && (
-        <button onClick={() => generateVideo(i, shot.frameUrl)}
-          className="w-full py-3 border border-[#e8d5b0] rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0] hover:bg-[#e8d5b0] hover:text-[#0a0a0a] transition-all">
-          🎬 用第一格生成影片
-        </button>
-      )}
-    </div>
-
-  </div>
-)}
-
-                      
                       {shot.videoStatus === 'generating' && (
                         <>
-                          <div className="w-full py-3 border border-[#e8d5b0]/30 rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0]/50 text-center animate-pulse">
-                            ⏳ 生成中... 約需 3-5 分鐘
-                          </div>
-                          <button onClick={() => fetchResult(i)} disabled={fetchingResult === i}
-                            className="w-full py-3 bg-[#1a1a1a] border border-[#e8d5b0] rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0] hover:bg-[#e8d5b0] hover:text-[#0a0a0a] transition-all disabled:opacity-50">
+                          <div className="w-full py-3 border border-[#e8d5b0]/30 rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0]/50 text-center animate-pulse">⏳ 生成中... 約需 3-5 分鐘</div>
+                          <button onClick={() => fetchResult(i)} disabled={fetchingResult === i} className="w-full py-3 bg-[#1a1a1a] border border-[#e8d5b0] rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0] hover:bg-[#e8d5b0] hover:text-[#0a0a0a] transition-all disabled:opacity-50">
                             {fetchingResult === i ? '🔍 查詢中...' : '🔍 查詢影片結果'}
                           </button>
                           {shot.requestId && (
@@ -701,66 +763,51 @@ async function fetchLipSyncResult(index: number) {
                           )}
                         </>
                       )}
+
                       {shot.videoStatus === 'done' && shot.videoUrl && (
-  <div className="space-y-3">
-    <video src={shot.lipSyncUrl || shot.videoUrl} controls className="w-full rounded-xl max-h-[500px]" />
-    <a href={shot.lipSyncUrl || shot.videoUrl} download target="_blank" rel="noreferrer"
-      className="block w-full py-2.5 bg-[#e8d5b0] text-[#0a0a0a] rounded-xl text-xs font-bold tracking-widest uppercase text-center hover:opacity-90 transition-all">
-      ⬇️ 下載影片
-    </a>
+                        <div className="space-y-3">
+                          <video src={shot.lipSyncUrl || shot.videoUrl} controls className="w-full rounded-xl max-h-[500px]" />
+                          <a href={shot.lipSyncUrl || shot.videoUrl} download target="_blank" rel="noreferrer" className="block w-full py-2.5 bg-[#e8d5b0] text-[#0a0a0a] rounded-xl text-xs font-bold tracking-widest uppercase text-center hover:opacity-90 transition-all">⬇️ 下載影片</a>
 
-    {/* Lip Sync Section */}
-    <div className="border-t border-[#222] pt-3">
-      <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-2">🎤 Lip Sync 配音</div>
+                          <div className="border-t border-[#222] pt-3">
+                            <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-2">🎤 Lip Sync 配音</div>
 
-      {(!shot.lipSyncStatus || shot.lipSyncStatus === 'idle') && (
-        <label className="block w-full py-2.5 border border-dashed border-[#333] rounded-xl text-xs text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all cursor-pointer text-center">
-          📁 上傳配音檔案（MP3/WAV）
-          <input type="file" accept="audio/*" className="hidden"
-            onChange={e => {
-              const file = e.target.files?.[0]
-              if (file) handleLipSync(i, file)
-            }} />
-        </label>
-      )}
+                            {(!shot.lipSyncStatus || shot.lipSyncStatus === 'idle') && (
+                              <label className="block w-full py-2.5 border border-dashed border-[#333] rounded-xl text-xs text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all cursor-pointer text-center">
+                                📁 上傳配音檔案（MP3/WAV）
+                                <input type="file" accept="audio/*" className="hidden" onChange={e => {
+                                  const file = e.target.files?.[0]
+                                  if (file) handleLipSync(i, file)
+                                }} />
+                              </label>
+                            )}
 
-      {shot.lipSyncStatus === 'uploading' && (
-        <div className="w-full py-2.5 border border-[#e8d5b0]/30 rounded-xl text-xs text-[#e8d5b0]/50 text-center animate-pulse">
-          ⬆️ 上傳配音中...
-        </div>
-      )}
+                            {shot.lipSyncStatus === 'uploading' && (
+                              <div className="w-full py-2.5 border border-[#e8d5b0]/30 rounded-xl text-xs text-[#e8d5b0]/50 text-center animate-pulse">⬆️ 上傳配音中...</div>
+                            )}
 
-      {shot.lipSyncStatus === 'generating' && (
-        <>
-          <div className="w-full py-2.5 border border-[#e8d5b0]/30 rounded-xl text-xs text-[#e8d5b0]/50 text-center animate-pulse mb-2">
-            ⏳ Lip Sync 生成中... 約需 2-3 分鐘
-          </div>
-          <button onClick={() => fetchLipSyncResult(i)}
-            className="w-full py-2.5 bg-[#1a1a1a] border border-[#e8d5b0] rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0] hover:bg-[#e8d5b0] hover:text-[#0a0a0a] transition-all">
-            🔍 查詢 Lip Sync 結果
-          </button>
-        </>
-      )}
+                            {shot.lipSyncStatus === 'generating' && (
+                              <>
+                                <div className="w-full py-2.5 border border-[#e8d5b0]/30 rounded-xl text-xs text-[#e8d5b0]/50 text-center animate-pulse mb-2">⏳ Lip Sync 生成中... 約需 2-3 分鐘</div>
+                                <button onClick={() => fetchLipSyncResult(i)} className="w-full py-2.5 bg-[#1a1a1a] border border-[#e8d5b0] rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0] hover:bg-[#e8d5b0] hover:text-[#0a0a0a] transition-all">🔍 查詢 Lip Sync 結果</button>
+                              </>
+                            )}
 
-      {shot.lipSyncStatus === 'done' && shot.lipSyncUrl && (
-        <div className="text-xs text-green-400 text-center py-2">
-          ✅ Lip Sync 完成！影片已更新
-        </div>
-      )}
+                            {shot.lipSyncStatus === 'done' && shot.lipSyncUrl && (
+                              <div className="text-xs text-green-400 text-center py-2">✅ Lip Sync 完成！影片已更新</div>
+                            )}
 
-      {shot.lipSyncStatus === 'error' && (
-        <div className="text-xs text-red-400 text-center py-2">
-          Lip Sync 失敗，請重試
-        </div>
-      )}
-    </div>
-  </div>
-)}
+                            {shot.lipSyncStatus === 'error' && (
+                              <div className="text-xs text-red-400 text-center py-2">Lip Sync 失敗，請重試</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {shot.videoStatus === 'error' && (
                         <div className="flex flex-col gap-2">
                           <div className="w-full py-3 border border-red-800/40 rounded-xl text-xs text-red-400 text-center">生成失敗</div>
-                          <button onClick={() => generateVideo(i)}
-                            className="w-full py-2.5 border border-[#222] rounded-xl text-xs text-[#555] hover:text-[#e8d5b0] hover:border-[#e8d5b0] transition-all">重試</button>
+                          <button onClick={() => generateVideo(i)} className="w-full py-2.5 border border-[#222] rounded-xl text-xs text-[#555] hover:text-[#e8d5b0] hover:border-[#e8d5b0] transition-all">重試</button>
                         </div>
                       )}
                     </div>

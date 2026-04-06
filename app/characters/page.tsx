@@ -8,6 +8,8 @@ interface Character {
   name: string
   description: string
   appearanceJson: string
+  wardrobeLock: string
+  negativeConstraints: string
   imageUrl: string | null
   loraUrl: string | null
   createdAt: number
@@ -23,6 +25,8 @@ export default function Characters() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [appearanceJson, setAppearanceJson] = useState('')
+  const [wardrobeLock, setWardrobeLock] = useState('')
+  const [negativeConstraints, setNegativeConstraints] = useState('')
 
   useEffect(() => { loadCharacters() }, [])
 
@@ -31,12 +35,62 @@ export default function Characters() {
     const { data, error } = await supabase.from('characters').select('*').order('created_at', { ascending: true })
     if (!error && data) {
       setCharacters(data.map(c => ({
+        appearanceJson: extractAppearanceJson(c.appearance_json || ''),
+        wardrobeLock: extractMetadataField(c.appearance_json || '', 'wardrobe_lock'),
+        negativeConstraints: extractMetadataField(c.appearance_json || '', 'negative_constraints'),
         id: c.id, name: c.name, description: c.description || '',
-        appearanceJson: c.appearance_json || '', imageUrl: c.image_url || null,
+        imageUrl: c.image_url || null,
         loraUrl: c.lora_url || null, createdAt: c.created_at,
       })))
     }
     setLoading(false)
+  }
+
+  function extractAppearanceJson(raw: string) {
+    if (!raw) return ''
+    try {
+      const parsed = JSON.parse(raw)
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return raw
+      const { wardrobe_lock, negative_constraints, ...rest } = parsed as Record<string, unknown>
+      return Object.keys(rest).length > 0 ? JSON.stringify(rest, null, 2) : ''
+    } catch {
+      return raw
+    }
+  }
+
+  function extractMetadataField(raw: string, field: 'wardrobe_lock' | 'negative_constraints') {
+    if (!raw) return ''
+    try {
+      const parsed = JSON.parse(raw)
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return ''
+      const value = (parsed as Record<string, unknown>)[field]
+      return typeof value === 'string' ? value : ''
+    } catch {
+      return ''
+    }
+  }
+
+  function buildAppearancePayload() {
+    let parsedAppearance: Record<string, unknown> = {}
+
+    if (appearanceJson.trim()) {
+      try {
+        const parsed = JSON.parse(appearanceJson)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          parsedAppearance = parsed as Record<string, unknown>
+        } else {
+          throw new Error('外貌 JSON 必須係 object')
+        }
+      } catch {
+        throw new Error('外貌 JSON 格式錯誤，請先修正先儲存')
+      }
+    }
+
+    return JSON.stringify({
+      ...parsedAppearance,
+      wardrobe_lock: wardrobeLock.trim(),
+      negative_constraints: negativeConstraints.trim(),
+    })
   }
 
   function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -62,10 +116,17 @@ export default function Characters() {
   async function addCharacter() {
     if (!name) { setError('請輸入角色名字'); return }
     setError('')
-    const { error } = await supabase.from('characters').insert({ id: Date.now().toString(), name, description, appearance_json: appearanceJson, image_url: uploadedImage || '', created_at: Date.now() })
+    let appearancePayload = ''
+    try {
+      appearancePayload = buildAppearancePayload()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '角色資料格式錯誤')
+      return
+    }
+    const { error } = await supabase.from('characters').insert({ id: Date.now().toString(), name, description, appearance_json: appearancePayload, image_url: uploadedImage || '', created_at: Date.now() })
     if (error) { setError('儲存失敗：' + error.message); return }
     await loadCharacters()
-    setName(''); setDescription(''); setAppearanceJson(''); setUploadedImage(null); setShowAdd(false)
+    setName(''); setDescription(''); setAppearanceJson(''); setWardrobeLock(''); setNegativeConstraints(''); setUploadedImage(null); setShowAdd(false)
   }
 
   async function deleteCharacter(id: string) {
@@ -145,8 +206,16 @@ export default function Characters() {
                   <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="例如：young Asian woman, 25 years old, short bob hair..." rows={3} className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#e8d5b0] transition-colors resize-none" />
                 </div>
                 <div>
-                  <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-2">外貌 JSON</div>
+                  <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-2">外貌鎖定 JSON</div>
                   <textarea value={appearanceJson} onChange={e => setAppearanceJson(e.target.value)} placeholder={'{\n  "hair": "short bob, dark brown",\n  "face": "delicate features"\n}'} rows={5} className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2.5 text-xs font-mono text-green-400 outline-none focus:border-[#e8d5b0] transition-colors resize-none" />
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-2">服裝鎖定</div>
+                  <textarea value={wardrobeLock} onChange={e => setWardrobeLock(e.target.value)} placeholder="例如：black leather jacket, white tee, dark jeans, no hat" rows={2} className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#e8d5b0] transition-colors resize-none" />
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-2">禁止變動</div>
+                  <textarea value={negativeConstraints} onChange={e => setNegativeConstraints(e.target.value)} placeholder="例如：do not change hair length, no extra fingers, no age shift, no wardrobe swap" rows={2} className="w-full bg-[#0a0a0a] border border-[#222] rounded-lg px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#e8d5b0] transition-colors resize-none" />
                 </div>
                 <div className="flex gap-3">
                   <button onClick={generateCharacterImage} disabled={generating} className="flex-1 py-2.5 border border-[#e8d5b0] rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0] hover:bg-[#e8d5b0] hover:text-[#0a0a0a] transition-all disabled:opacity-40">{generating ? '⏳ 生成中...' : '✨ AI 生成圖片'}</button>
@@ -182,6 +251,8 @@ export default function Characters() {
                 <div className="p-4">
                   <div className="font-bold text-sm text-[#e8d5b0] mb-1">{char.name}</div>
                   <div className="text-xs text-[#555] leading-relaxed line-clamp-2">{char.description || '冇描述'}</div>
+                  {char.wardrobeLock && <div className="text-[10px] text-[#777] mt-2">服裝鎖定：{char.wardrobeLock}</div>}
+                  {char.negativeConstraints && <div className="text-[10px] text-[#666] mt-1">禁止變動：{char.negativeConstraints}</div>}
                 </div>
                 <div className="p-3 border-t border-[#222]">
                   {char.loraUrl ? (
