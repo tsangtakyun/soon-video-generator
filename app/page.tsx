@@ -130,6 +130,7 @@ interface Shot {
   lipSyncRequestId?: string
   frameUrl?: string
   frameStatus?: 'idle' | 'generating' | 'done' | 'error'
+  usedFrame?: boolean
 }
 
 export default function Home() {
@@ -243,32 +244,35 @@ async function loadData() {
     }
   }
 
-  async function generateVideo(index: number, elementImageUrl?: string) {
-  setShots(prev => { const n = [...prev]; n[index] = { ...n[index], videoStatus: 'generating' }; return n })
+  async function generateVideo(index: number, frameImageUrl?: string) {
+  setShots(prev => { const n = [...prev]; n[index] = { ...n[index], videoStatus: 'generating', usedFrame: !!frameImageUrl }; return n })
   try {
-    const res = await fetch('/api/generate-video', {
+    const endpoint = frameImageUrl ? '/api/image-to-video' : '/api/generate-video'
+    const body = frameImageUrl
+      ? { prompt: shots[index].prompt, imageUrl: frameImageUrl }
+      : { prompt: shots[index].prompt }
+
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        prompt: shots[index].prompt,
-        elementImageUrl: elementImageUrl || null,
-      }),
+      body: JSON.stringify(body),
     })
-      const data = await res.json()
-      if (data.error) throw new Error(data.error)
-      setShots(prev => { const n = [...prev]; n[index] = { ...n[index], requestId: data.request_id }; return n })
-    } catch (err: unknown) {
-      setShots(prev => { const n = [...prev]; n[index] = { ...n[index], videoStatus: 'error' }; return n })
-      setError(err instanceof Error ? err.message : '影片生成失敗')
-    }
+    const data = await res.json()
+    if (data.error) throw new Error(data.error)
+    setShots(prev => { const n = [...prev]; n[index] = { ...n[index], requestId: data.request_id }; return n })
+  } catch (err: unknown) {
+    setShots(prev => { const n = [...prev]; n[index] = { ...n[index], videoStatus: 'error' }; return n })
+    setError(err instanceof Error ? err.message : '影片生成失敗')
   }
+}
 
   async function fetchResult(index: number) {
     const shot = shots[index]
     if (!shot.requestId) return
     setFetchingResult(index)
     try {
-      const res = await fetch('/api/check-video', {
+      const endpoint = shot.usedFrame ? '/api/check-image-video' : '/api/check-video'
+const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ requestId: shot.requestId }),
