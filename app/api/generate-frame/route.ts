@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
         image_url: imageUrl,
         prompt: prompt,
         num_images: 1,
-        image_size: 'portrait_9_16',
+        image_size: 'portrait_4_3' as const,
       },
     })
 
