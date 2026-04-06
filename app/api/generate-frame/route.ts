@@ -20,9 +20,9 @@ export async function POST(req: NextRequest) {
       console.log('Uploaded character image:', imageUrl)
     }
 
-    const result = await fal.subscribe('fal-ai/flux/dev/redux', {
+    // 用 Flux Schnell 生成（支援 prompt + image style）
+    const result = await fal.subscribe('fal-ai/flux/schnell', {
       input: {
-        image_url: imageUrl,
         prompt: prompt,
         num_images: 1,
         image_size: 'portrait_4_3' as const,
