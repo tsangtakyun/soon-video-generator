@@ -128,6 +128,8 @@ interface Shot {
   lipSyncUrl?: string
   lipSyncStatus?: 'idle' | 'uploading' | 'generating' | 'done' | 'error'
   lipSyncRequestId?: string
+  frameUrl?: string
+  frameStatus?: 'idle' | 'generating' | 'done' | 'error'
 }
 
 export default function Home() {
@@ -344,6 +346,29 @@ async function fetchLipSyncResult(index: number) {
     }
   } catch (err: unknown) {
     setError(err instanceof Error ? err.message : '查詢失敗')
+  }
+}
+
+  async function generateFrame(index: number, characterImageUrl: string) {
+  setShots(prev => { const n = [...prev]; n[index] = { ...n[index], frameStatus: 'generating' }; return n })
+  try {
+    const shot = shots[index]
+    const framePrompt = `${shot.type}, ${shot.prompt}, first frame composition`
+    
+    const res = await fetch('/api/generate-frame', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        characterImageUrl,
+        prompt: framePrompt,
+      }),
+    })
+    const data = await res.json()
+    if (data.error) throw new Error(data.error)
+    setShots(prev => { const n = [...prev]; n[index] = { ...n[index], frameStatus: 'done', frameUrl: data.frameUrl }; return n })
+  } catch (err: unknown) {
+    setShots(prev => { const n = [...prev]; n[index] = { ...n[index], frameStatus: 'error' }; return n })
+    setError(err instanceof Error ? err.message : '生成第一格失敗')
   }
 }
   
@@ -611,22 +636,47 @@ async function fetchLipSyncResult(index: number) {
                     </div>
 
                     <div className="px-5 pb-5 flex flex-col gap-3">
-                      {shot.videoStatus === 'idle' && (
+                     {shot.videoStatus === 'idle' && (
   <div className="flex flex-col gap-2">
-    <button onClick={() => generateVideo(i)}
-      className="w-full py-3 border border-[#222] rounded-xl text-xs font-bold tracking-widest uppercase text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all">
-      🎥 生成影片（無 Element）
-    </button>
-    {characters.length > 0 && (
+
+    {/* 第一格預覽 */}
+    {shot.frameUrl && (
+      <div className="mb-2">
+        <div className="text-[10px] text-[#555] font-bold uppercase tracking-widest mb-1">第一格預覽</div>
+        <img src={shot.frameUrl} alt="frame" className="w-full rounded-xl max-h-[200px] object-cover" />
+      </div>
+    )}
+
+    {/* 生成第一格 */}
+    {characters.filter(c => c.imageUrl).length > 0 && (
       <div className="flex flex-col gap-1">
+        <div className="text-[10px] text-[#555] font-bold uppercase tracking-widest">Step 1 — 生成第一格</div>
         {characters.filter(c => c.imageUrl).map(char => (
-          <button key={char.id} onClick={() => generateVideo(i, char.imageUrl)}
-            className="w-full py-2.5 border border-[#e8d5b0]/30 rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0]/70 hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all">
-            👤 用 {char.name} Element 生成
+          <button key={char.id}
+            onClick={() => generateFrame(i, char.imageUrl)}
+            disabled={shot.frameStatus === 'generating'}
+            className="w-full py-2.5 border border-[#333] rounded-xl text-xs font-bold tracking-widest uppercase text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all disabled:opacity-40">
+            {shot.frameStatus === 'generating' ? '⏳ 生成第一格中...' : `🖼️ 用 ${char.name} 生成第一格`}
           </button>
         ))}
       </div>
     )}
+
+    {/* 生成影片 */}
+    <div className="flex flex-col gap-1">
+      <div className="text-[10px] text-[#555] font-bold uppercase tracking-widest">Step 2 — 生成影片</div>
+      <button onClick={() => generateVideo(i)}
+        className="w-full py-3 border border-[#222] rounded-xl text-xs font-bold tracking-widest uppercase text-[#555] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all">
+        🎥 Text-to-Video（冇第一格）
+      </button>
+      {shot.frameUrl && (
+        <button onClick={() => generateVideo(i, shot.frameUrl)}
+          className="w-full py-3 border border-[#e8d5b0] rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0] hover:bg-[#e8d5b0] hover:text-[#0a0a0a] transition-all">
+          🎬 用第一格生成影片
+        </button>
+      )}
+    </div>
+
   </div>
 )}
 
