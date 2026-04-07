@@ -53,8 +53,9 @@ export async function POST(req: NextRequest) {
     const shotsDesc = shotInputs.map((s: ShotInput) => {
       let desc = `Shot ${s.number} [${s.shotType}]：${s.sceneDesc}`
       if (s.hasDialogue && s.dialogue) {
-  desc += `\n[此 Shot 有對白。請勿加入任何對白文字。只需描述：lips moving while speaking, mouth open and closing naturally]`
-}
+        desc += `\n[此 Shot 有對白。請保留以下原文作為 exact spoken line reference，唔好改寫意思，唔好另作新句子：${s.dialogue}]`
+        desc += `\n[請喺 prompt 內清楚寫出角色正在講呢句說話，並描述嘴型、停頓、語氣、情緒同表演節奏；但唔好出現字幕、caption、screen text、on-screen words。]`
+      }
       return desc
     }).join('\n\n')
 
@@ -66,13 +67,15 @@ export async function POST(req: NextRequest) {
 2. 每個 prompt 包含：鏡頭類型、畫面描述、演員動作指引、從 JSON 抽取嘅風格參數
 3. 必須指定 9:16 aspect ratio
 4. 避免 AI 感，要有電影質感
-5. 如果有對白，prompt 要反映對話嘅情緒同氣氛，但唔需要逐字翻譯對白
+5. 如果有對白，prompt 要保留輸入嘅 exact dialogue 作為 spoken line reference，唔好改寫成另一句說話
 6. 如果有角色描述，每個 prompt 都必須加入對應角色嘅外貌描述、服裝鎖定，同埋避免變動項
 7. 如果有場景參考，每個 prompt 都必須保持同一個場景設定
 8. 回覆必須係 JSON 格式，shots 數量必須同輸入嘅 Shot 數量一樣
-9. 如果有對白，絕對唔可以將對白文字寫入 prompt，只係描述角色嘅情緒、嘴型狀態（lips moving、speaking）、同語氣
+9. 如果有對白，可以將原文對白寫入 prompt 作為 spoken line reference，但必須清楚指示係角色講出呢句說話，而唔係字幕、caption 或畫面文字
 10. 生成 prompt 時優先考慮角色樣貌一致性，而唔係誇張變化。避免突然轉髮型、年齡、服裝、臉部比例、身形
 11. prompt 內要清楚區分固定元素（identity lock, wardrobe lock, scene lock）同可變元素（action, emotion, camera）
+12. 有對白時，優先保留原句內容，其次先補充 delivery，例如 soft, restrained, cold, pained, whispering, paused
+13. 有對白時，明確避免任何 on-screen text, subtitles, captions, floating words, or text overlay
 
 回覆格式：
 {
@@ -96,7 +99,7 @@ ${sceneDesc}
 風格 JSON：${JSON.stringify(styleJson, null, 2)}
 
 請為以上每個 Shot 生成對應嘅 Kling prompt。
-保持每個 Shot 嘅鏡頭類型同情緒，如果有對白請反映喺情緒同演員指引入面。`
+保持每個 Shot 嘅鏡頭類型同情緒，如果有對白請保留原文作為 exact spoken line reference，唔好自行改句子。`
 
     const message = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
