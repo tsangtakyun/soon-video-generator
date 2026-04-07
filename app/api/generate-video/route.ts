@@ -59,7 +59,16 @@ export async function POST(req: NextRequest) {
 
     const data = await response.json()
     console.log('Response:', JSON.stringify(data).substring(0, 300))
-    if (!response.ok) throw new Error(data.detail || JSON.stringify(data))
+    if (!response.ok) {
+      const detail = typeof data?.detail === 'string' ? data.detail : JSON.stringify(data)
+      const lowerDetail = detail.toLowerCase()
+
+      if (provider === 'seedance' && (response.status === 401 || response.status === 403 || lowerDetail.includes('early access') || lowerDetail.includes('request access'))) {
+        throw new Error('Seedance 2.0 目前喺 fal.ai 需要 early access，你個 account 未開通，所以暫時用唔到。')
+      }
+
+      throw new Error(detail)
+    }
 
     return NextResponse.json({ request_id: data.request_id, provider })
 
