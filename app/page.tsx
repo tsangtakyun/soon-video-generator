@@ -124,6 +124,7 @@ interface Shot {
   emotion: string
   prompt: string
   camera_setting: string
+  sourceInputSignature?: string
   frameApproved?: boolean
   videoUrl?: string
   videoStatus?: 'idle' | 'generating' | 'done' | 'error'
@@ -229,10 +230,20 @@ async function loadData() {
     )
   }
 
-  function createBaseShotState(inputId: string, shot: Shot): Shot {
+  function getShotInputSignature(input: ShotInput) {
+    return JSON.stringify({
+      sceneDesc: input.sceneDesc.trim(),
+      shotType: input.shotType,
+      hasDialogue: input.hasDialogue,
+      dialogue: input.dialogue.trim(),
+    })
+  }
+
+  function createBaseShotState(inputId: string, inputSignature: string, shot: Shot): Shot {
     return {
       ...shot,
       id: inputId,
+      sourceInputSignature: inputSignature,
       frameStatus: 'idle',
       frameApproved: false,
       videoStatus: 'idle',
@@ -270,26 +281,29 @@ async function loadData() {
         const previousShots = new Map(prev.map(shot => [shot.id, shot]))
 
         return data.shots.map((generatedShot: Shot, index: number) => {
-          const inputId = validShots[index].id
+          const input = validShots[index]
+          const inputId = input.id
+          const inputSignature = getShotInputSignature(input)
           const existingShot = previousShots.get(inputId)
 
           if (!existingShot) {
-            return createBaseShotState(inputId, generatedShot)
+            return createBaseShotState(inputId, inputSignature, generatedShot)
           }
 
-          const promptChanged =
-            existingShot.prompt !== generatedShot.prompt ||
-            existingShot.type !== generatedShot.type ||
-            existingShot.number !== generatedShot.number
-
-          if (promptChanged) {
-            return createBaseShotState(inputId, generatedShot)
+          const inputChanged = existingShot.sourceInputSignature !== inputSignature
+          if (inputChanged) {
+            return createBaseShotState(inputId, inputSignature, generatedShot)
           }
 
           return {
             ...existingShot,
-            ...generatedShot,
             id: inputId,
+            number: generatedShot.number,
+            type: generatedShot.type,
+            emotion: generatedShot.emotion,
+            prompt: existingShot.prompt,
+            camera_setting: existingShot.camera_setting,
+            sourceInputSignature: inputSignature,
           }
         })
       })
