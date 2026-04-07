@@ -148,6 +148,27 @@ interface Shot {
   usedFrame?: boolean
 }
 
+interface SavedProjectPayload {
+  shotInputs: ShotInput[]
+  shots: Shot[]
+  selectedPresetKey: string
+  customJson: string
+  isCustom: boolean
+  selectedCharacterIds: string[]
+  selectedSceneId: string | null
+  videoProvider: 'kling' | 'seedance'
+  aspectRatio: '9:16' | '16:9' | '2.35:1'
+}
+
+interface SavedProject {
+  id: string
+  name: string
+  updatedAt: number
+  payload: SavedProjectPayload
+}
+
+const PROJECT_STORAGE_KEY = 'soon-video-generator-projects-v1'
+
 export default function Home() {
   const [shotInputs, setShotInputs] = useState<ShotInput[]>([
     { id: '1', number: 1, sceneDesc: '', shotType: 'Wide Shot', hasDialogue: false, dialogue: '' }
@@ -170,10 +191,14 @@ export default function Home() {
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([])
   const [videoProvider, setVideoProvider] = useState<'kling' | 'seedance'>('kling')
   const [aspectRatio, setAspectRatio] = useState<'9:16' | '16:9' | '2.35:1'>('9:16')
+  const [savedProjects, setSavedProjects] = useState<SavedProject[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState('')
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null)
 
   useEffect(() => {
-  loadData()
-}, [])
+    loadData()
+    refreshSavedProjects()
+  }, [])
 
 async function loadData() {
   const { data: chars } = await supabase.from('characters').select('*').order('created_at', { ascending: true })
@@ -196,6 +221,18 @@ async function loadData() {
       description: s.description || '',
       imageUrl: s.image_url || '',
     })))
+  }
+}
+
+function refreshSavedProjects() {
+  if (typeof window === 'undefined') return
+
+  try {
+    const raw = window.localStorage.getItem(PROJECT_STORAGE_KEY)
+    const parsed = raw ? JSON.parse(raw) as SavedProject[] : []
+    setSavedProjects(parsed.sort((a, b) => b.updatedAt - a.updatedAt))
+  } catch {
+    setSavedProjects([])
   }
 }
 
@@ -241,6 +278,100 @@ async function loadData() {
       ? prev.filter(characterId => characterId !== id)
       : [...prev, id]
     )
+  }
+
+  function buildProjectPayload(): SavedProjectPayload {
+    return {
+      shotInputs,
+      shots,
+      selectedPresetKey: selectedPreset.key,
+      customJson,
+      isCustom,
+      selectedCharacterIds,
+      selectedSceneId: selectedScene?.id || null,
+      videoProvider,
+      aspectRatio,
+    }
+  }
+
+  function persistProjects(projects: SavedProject[]) {
+    if (typeof window === 'undefined') return
+    const sorted = [...projects].sort((a, b) => b.updatedAt - a.updatedAt)
+    window.localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(sorted))
+    setSavedProjects(sorted)
+  }
+
+  function saveProject(saveAsNew = false) {
+    if (typeof window === 'undefined') return
+
+    const existingProject = currentProjectId
+      ? savedProjects.find(project => project.id === currentProjectId)
+      : null
+    const suggestedName = saveAsNew ? '' : existingProject?.name || ''
+    const name = window.prompt('Project 名稱', suggestedName)
+
+    if (!name?.trim()) return
+
+    const now = Date.now()
+    const projectId = saveAsNew || !currentProjectId ? now.toString() : currentProjectId
+    const nextProject: SavedProject = {
+      id: projectId,
+      name: name.trim(),
+      updatedAt: now,
+      payload: buildProjectPayload(),
+    }
+
+    const remaining = savedProjects.filter(project => project.id !== projectId)
+    persistProjects([nextProject, ...remaining])
+    setCurrentProjectId(projectId)
+    setSelectedProjectId(projectId)
+    setNotice(`已儲存 Project：${nextProject.name}`)
+  }
+
+  function loadProject(projectId: string) {
+    const project = savedProjects.find(item => item.id === projectId)
+    if (!project) {
+      setError('搵唔到呢個 Project')
+      return
+    }
+
+    const preset = PRESETS.find(item => item.key === project.payload.selectedPresetKey) || PRESETS[0]
+    const restoredScene = project.payload.selectedSceneId
+      ? scenes.find(scene => scene.id === project.payload.selectedSceneId) || null
+      : null
+
+    setShotInputs(project.payload.shotInputs)
+    setShots(project.payload.shots)
+    setSelectedPreset(preset)
+    setCustomJson(project.payload.customJson)
+    setIsCustom(project.payload.isCustom)
+    setSelectedCharacterIds(project.payload.selectedCharacterIds)
+    setSelectedScene(restoredScene)
+    setVideoProvider(project.payload.videoProvider)
+    setAspectRatio(project.payload.aspectRatio)
+    setCurrentProjectId(project.id)
+    setSelectedProjectId(project.id)
+    setError('')
+    setNotice(`已載入 Project：${project.name}`)
+  }
+
+  function deleteProject(projectId: string) {
+    const project = savedProjects.find(item => item.id === projectId)
+    if (!project) return
+
+    if (!window.confirm(`刪除 Project「${project.name}」？`)) return
+
+    const remaining = savedProjects.filter(item => item.id !== projectId)
+    persistProjects(remaining)
+
+    if (currentProjectId === projectId) {
+      setCurrentProjectId(null)
+    }
+    if (selectedProjectId === projectId) {
+      setSelectedProjectId('')
+    }
+
+    setNotice(`已刪除 Project：${project.name}`)
   }
 
   function getShotInputSignature(input: ShotInput) {
@@ -572,6 +703,60 @@ async function fetchLipSyncResult(index: number) {
 
         {/* LEFT */}
         <div className="border-r border-[#222] p-6 flex flex-col gap-5 overflow-y-auto">
+
+          <div className="bg-[#111] border border-[#222] rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-[10px] font-bold tracking-widest uppercase text-[#555]">Project</div>
+              {currentProjectId && (
+                <span className="text-[10px] text-[#444]">已連結儲存版本</span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <button
+                onClick={() => saveProject(false)}
+                className="py-2.5 rounded-xl border border-[#e8d5b0] text-xs font-bold tracking-widest uppercase text-[#e8d5b0] hover:bg-[#e8d5b0] hover:text-[#0a0a0a] transition-all"
+              >
+                💾 儲存 Project
+              </button>
+              <button
+                onClick={() => saveProject(true)}
+                className="py-2.5 rounded-xl border border-[#333] text-xs font-bold tracking-widest uppercase text-[#666] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all"
+              >
+                ＋ 另存新 Project
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <select
+                value={selectedProjectId}
+                onChange={e => setSelectedProjectId(e.target.value)}
+                className="flex-1 bg-[#0a0a0a] border border-[#222] rounded-xl px-3 py-2 text-xs text-[#e8e8e8] outline-none focus:border-[#e8d5b0]"
+              >
+                <option value="">選擇已儲存 Project</option>
+                {savedProjects.map(project => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => selectedProjectId && loadProject(selectedProjectId)}
+                disabled={!selectedProjectId}
+                className="px-3 py-2 rounded-xl border border-[#333] text-xs font-bold tracking-widest uppercase text-[#666] hover:border-[#e8d5b0] hover:text-[#e8d5b0] transition-all disabled:opacity-40"
+              >
+                載入
+              </button>
+              <button
+                onClick={() => selectedProjectId && deleteProject(selectedProjectId)}
+                disabled={!selectedProjectId}
+                className="px-3 py-2 rounded-xl border border-[#333] text-xs font-bold tracking-widest uppercase text-[#666] hover:border-red-500 hover:text-red-400 transition-all disabled:opacity-40"
+              >
+                刪除
+              </button>
+            </div>
+            <div className="text-[10px] text-[#444] mt-3 leading-relaxed">
+              會保存 shot list、prompts、第一格、影片結果、角色鎖定、場景、比例同影片引擎。暫時儲存喺你呢部瀏覽器。
+            </div>
+          </div>
 
           {/* 場景參考圖 */}
           <div className="bg-[#111] border border-[#222] rounded-xl p-4">
