@@ -10,6 +10,20 @@ interface ShotInput {
   dialogue: string
 }
 
+function parseDialogueLine(rawDialogue: string) {
+  const trimmed = rawDialogue.trim()
+  const match = trimmed.match(/^([^:：\-\n]+?)\s*[:：-]\s*["“”']?([\s\S]+?)["“”']?$/)
+
+  if (!match) {
+    return null
+  }
+
+  return {
+    speaker: match[1].trim(),
+    line: match[2].trim(),
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { shotInputs, styleJson, characters, sceneRef } = await req.json()
@@ -53,8 +67,14 @@ export async function POST(req: NextRequest) {
     const shotsDesc = shotInputs.map((s: ShotInput) => {
       let desc = `Shot ${s.number} [${s.shotType}]：${s.sceneDesc}`
       if (s.hasDialogue && s.dialogue) {
-        desc += `\n[此 Shot 有對白。請保留以下原文作為 exact spoken line reference，唔好改寫意思，唔好另作新句子：${s.dialogue}]`
-        desc += `\n[請喺 prompt 內清楚寫出角色正在講呢句說話，並描述嘴型、停頓、語氣、情緒同表演節奏；但唔好出現字幕、caption、screen text、on-screen words。]`
+        const parsedDialogue = parseDialogueLine(s.dialogue)
+        if (parsedDialogue) {
+          desc += `\n[此 Shot 有對白。Speaker = ${parsedDialogue.speaker}. Exact spoken line reference = ${parsedDialogue.line}]`
+          desc += `\n[請喺 prompt 內清楚指明係 ${parsedDialogue.speaker} 講出呢句說話，保留原句意思同內容，並描述嘴型、停頓、語氣、情緒同表演節奏；但唔好出現字幕、caption、screen text、on-screen words。]`
+        } else {
+          desc += `\n[此 Shot 有對白。請保留以下原文作為 exact spoken line reference，唔好改寫意思，唔好另作新句子：${s.dialogue}]`
+          desc += `\n[請喺 prompt 內清楚寫出角色正在講呢句說話，並描述嘴型、停頓、語氣、情緒同表演節奏；但唔好出現字幕、caption、screen text、on-screen words。]`
+        }
       }
       return desc
     }).join('\n\n')
@@ -76,6 +96,7 @@ export async function POST(req: NextRequest) {
 11. prompt 內要清楚區分固定元素（identity lock, wardrobe lock, scene lock）同可變元素（action, emotion, camera）
 12. 有對白時，優先保留原句內容，其次先補充 delivery，例如 soft, restrained, cold, pained, whispering, paused
 13. 有對白時，明確避免任何 on-screen text, subtitles, captions, floating words, or text overlay
+14. 如果對白有 speaker 標記（例如 Mia: "..."），必須明確保留 speaker 身份，唔好將說話錯配到其他角色
 
 回覆格式：
 {
@@ -99,7 +120,7 @@ ${sceneDesc}
 風格 JSON：${JSON.stringify(styleJson, null, 2)}
 
 請為以上每個 Shot 生成對應嘅 Kling prompt。
-保持每個 Shot 嘅鏡頭類型同情緒，如果有對白請保留原文作為 exact spoken line reference，唔好自行改句子。`
+保持每個 Shot 嘅鏡頭類型同情緒，如果有對白請保留原文作為 exact spoken line reference，唔好自行改句子；如果有 speaker，就要清楚寫明由該角色講。`
 
     const message = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
