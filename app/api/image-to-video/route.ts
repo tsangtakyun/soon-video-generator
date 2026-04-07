@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+function normalizeAspectRatio(aspectRatio: string) {
+  return aspectRatio === '2.35:1' ? '16:9' : aspectRatio
+}
+
 export async function POST(req: NextRequest) {
     try {
           const { prompt, imageUrl, provider = 'kling', aspectRatio = '9:16' } = await req.json()
@@ -16,7 +20,7 @@ export async function POST(req: NextRequest) {
         prompt,
         image_url: imageUrl,
         duration: '5',
-        aspect_ratio: aspectRatio,
+        aspect_ratio: normalizeAspectRatio(aspectRatio),
       }
 
       if (provider === 'seedance') {

@@ -106,6 +106,10 @@ const ASPECT_RATIOS = [
   { key: '2.35:1', label: '2.35:1', desc: '電影闊銀幕' },
 ] as const
 
+function getAspectRatioDisplay(aspectRatio: '9:16' | '16:9' | '2.35:1') {
+  return aspectRatio === '2.35:1' ? '2.35:1 (rendered as 16:9)' : aspectRatio
+}
+
 
 interface Character {
   id: string
@@ -717,6 +721,9 @@ async function fetchLipSyncResult(index: number) {
                 </button>
               ))}
             </div>
+            <div className="text-[10px] text-[#444] mt-3 leading-relaxed">
+              `2.35:1` 目前會保留電影闊銀幕構圖意圖，但喺 fal/Kling 端會自動以 `16:9` render，避免 API 報錯。
+            </div>
           </div>
 
           {/* Shots 輸入 */}
@@ -848,7 +855,7 @@ async function fetchLipSyncResult(index: number) {
                   <div className="text-xs text-[#555]">{selectedPreset.desc}</div>
                 </div>
                 <div className="ml-auto flex gap-6">
-                  {[['Mode', '720p'], ['Duration', '5s'], ['Ratio', aspectRatio]].map(([k, v]) => (
+                  {[['Mode', '720p'], ['Duration', '5s'], ['Ratio', getAspectRatioDisplay(aspectRatio)]].map(([k, v]) => (
                     <div key={k}>
                       <div className="text-[10px] text-[#333] font-mono uppercase">{k}</div>
                       <div className="text-sm text-[#e8d5b0] font-bold">{v}</div>
@@ -1071,7 +1078,7 @@ async function fetchLipSyncResult(index: number) {
                     </div>
 
                     <div className="px-5 py-3 border-t border-[#222] bg-[#0a0a0a] flex gap-6">
-                      {[['Camera', shot.camera_setting], ['Duration', '5s'], ['Ratio', aspectRatio], ['Mode', '720p'], ['Engine', shot.videoProvider || videoProvider]].map(([k, v]) => (
+                      {[['Camera', shot.camera_setting], ['Duration', '5s'], ['Ratio', getAspectRatioDisplay(aspectRatio)], ['Mode', '720p'], ['Engine', shot.videoProvider || videoProvider]].map(([k, v]) => (
                         <div key={k} className="text-[11px] text-[#333] font-mono">
                           {k}: <span className="text-[#e8d5b0]">{v}</span>
                         </div>

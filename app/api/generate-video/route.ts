@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fal } from '@fal-ai/client'
 
+function normalizeAspectRatio(aspectRatio: string) {
+  return aspectRatio === '2.35:1' ? '16:9' : aspectRatio
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { prompt, elementImageUrl, provider = 'kling', aspectRatio = '9:16' } = await req.json()
@@ -25,7 +29,7 @@ export async function POST(req: NextRequest) {
 
     const body: Record<string, unknown> = {
       prompt: uploadedImageUrl ? `${prompt}, @Element1 is the main character` : prompt,
-      aspect_ratio: aspectRatio,
+      aspect_ratio: normalizeAspectRatio(aspectRatio),
       duration: '5',
       generate_audio: false,
     }

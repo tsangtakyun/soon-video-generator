@@ -27,6 +27,9 @@ function parseDialogueLine(rawDialogue: string) {
 export async function POST(req: NextRequest) {
   try {
     const { shotInputs, styleJson, aspectRatio = '9:16', characters, sceneRef } = await req.json()
+    const aspectRatioGuidance = aspectRatio === '2.35:1'
+      ? '2.35:1 cinematic widescreen composition inside a 16:9 render, with wide horizontal framing, strong negative space, and letterbox-style visual intent'
+      : aspectRatio
 
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) throw new Error('Missing ANTHROPIC_API_KEY')
@@ -122,7 +125,7 @@ ${characterDesc}
 ${sceneDesc}
 
 風格 JSON：${JSON.stringify(styleJson, null, 2)}
-輸出比例：${aspectRatio}
+輸出比例：${aspectRatioGuidance}
 
 請為以上每個 Shot 生成對應嘅 Kling prompt。
 保持每個 Shot 嘅鏡頭類型同情緒，如果有對白請保留原文作為 exact spoken line reference，唔好自行改句子；如果有 speaker，就要清楚寫明由該角色講。`
