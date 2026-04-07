@@ -3,7 +3,7 @@ import { fal } from '@fal-ai/client'
 
 function getQueueId(provider: string) {
   return provider === 'seedance'
-    ? 'bytedance/seedance-2.0/text-to-video'
+    ? 'fal-ai/bytedance/seedance/v1.5/pro/text-to-video'
     : 'fal-ai/kling-video/v3/pro/text-to-video'
 }
 

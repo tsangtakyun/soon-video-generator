@@ -680,8 +680,7 @@ async function fetchLipSyncResult(index: number) {
                 }`}
               >
                 <div className={`text-xs font-bold ${videoProvider === 'seedance' ? 'text-[#e8d5b0]' : 'text-[#e8e8e8]'}`}>Seedance</div>
-                <div className="text-[10px] text-[#555] mt-1">同 prompt 比較口型同對白</div>
-                <div className="text-[10px] text-amber-400/80 mt-1">fal.ai 可能需要 early access</div>
+                <div className="text-[10px] text-[#555] mt-1">暫時使用 Seedance 1.5 Pro</div>
               </button>
             </div>
             <div className="text-[10px] text-[#444] mt-3 leading-relaxed">

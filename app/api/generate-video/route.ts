@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     }
 
     const queueId = provider === 'seedance'
-      ? 'bytedance/seedance-2.0/text-to-video'
+      ? 'fal-ai/bytedance/seedance/v1.5/pro/text-to-video'
       : 'fal-ai/kling-video/v3/pro/text-to-video'
 
     const response = await fetch(`https://queue.fal.run/${queueId}`, {
@@ -61,12 +61,6 @@ export async function POST(req: NextRequest) {
     console.log('Response:', JSON.stringify(data).substring(0, 300))
     if (!response.ok) {
       const detail = typeof data?.detail === 'string' ? data.detail : JSON.stringify(data)
-      const lowerDetail = detail.toLowerCase()
-
-      if (provider === 'seedance' && (response.status === 401 || response.status === 403 || lowerDetail.includes('early access') || lowerDetail.includes('request access'))) {
-        throw new Error('Seedance 2.0 目前喺 fal.ai 需要 early access，你個 account 未開通，所以暫時用唔到。')
-      }
-
       throw new Error(detail)
     }
 
