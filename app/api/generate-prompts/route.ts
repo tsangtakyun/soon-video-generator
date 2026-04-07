@@ -26,7 +26,7 @@ function parseDialogueLine(rawDialogue: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { shotInputs, styleJson, characters, sceneRef } = await req.json()
+    const { shotInputs, styleJson, aspectRatio = '9:16', characters, sceneRef } = await req.json()
 
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) throw new Error('Missing ANTHROPIC_API_KEY')
@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
 規則：
 1. 每個 prompt 必須係英文
 2. 每個 prompt 包含：鏡頭類型、畫面描述、演員動作指引、從 JSON 抽取嘅風格參數
-3. 必須指定 9:16 aspect ratio
+3. 必須指定輸入嘅 aspect ratio，並且喺 prompt 內清楚寫出
 4. 避免 AI 感，要有電影質感
 5. 如果有對白，prompt 要保留輸入嘅 exact dialogue 作為 spoken line reference，唔好改寫成另一句說話
 6. 如果有角色描述，每個 prompt 都必須加入對應角色嘅外貌描述、服裝鎖定，同埋避免變動項
@@ -122,6 +122,7 @@ ${characterDesc}
 ${sceneDesc}
 
 風格 JSON：${JSON.stringify(styleJson, null, 2)}
+輸出比例：${aspectRatio}
 
 請為以上每個 Shot 生成對應嘅 Kling prompt。
 保持每個 Shot 嘅鏡頭類型同情緒，如果有對白請保留原文作為 exact spoken line reference，唔好自行改句子；如果有 speaker，就要清楚寫明由該角色講。`

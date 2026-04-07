@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(req: NextRequest) {
     try {
-          const { prompt, imageUrl, provider = 'kling' } = await req.json()
+          const { prompt, imageUrl, provider = 'kling', aspectRatio = '9:16' } = await req.json()
 
       const falApiKey = process.env.FAL_API_KEY    
       
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
         prompt,
         image_url: imageUrl,
         duration: '5',
-        aspect_ratio: '9:16',
+        aspect_ratio: aspectRatio,
       }
 
       if (provider === 'seedance') {

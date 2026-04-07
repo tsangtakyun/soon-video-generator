@@ -100,6 +100,12 @@ const SHOT_TYPES = [
   'Tracking Shot', 'POV Shot'
 ]
 
+const ASPECT_RATIOS = [
+  { key: '9:16', label: '9:16', desc: '直式' },
+  { key: '16:9', label: '16:9', desc: '橫式 1920x1080' },
+  { key: '2.35:1', label: '2.35:1', desc: '電影闊銀幕' },
+] as const
+
 
 interface Character {
   id: string
@@ -159,6 +165,7 @@ export default function Home() {
   const [showScenePicker, setShowScenePicker] = useState(false)
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([])
   const [videoProvider, setVideoProvider] = useState<'kling' | 'seedance'>('kling')
+  const [aspectRatio, setAspectRatio] = useState<'9:16' | '16:9' | '2.35:1'>('9:16')
 
   useEffect(() => {
   loadData()
@@ -270,6 +277,7 @@ async function loadData() {
         body: JSON.stringify({
           shotInputs: validShots,
           styleJson: getActiveJson(),
+          aspectRatio,
           characters: activeCharacters.map(c => ({
             name: c.name,
             description: c.description,
@@ -324,12 +332,15 @@ async function loadData() {
     const endpoint = frameImageUrl ? '/api/image-to-video' : '/api/generate-video'
     const body = frameImageUrl
       ? { prompt: shots[index].prompt, imageUrl: frameImageUrl, provider }
-      : { prompt: shots[index].prompt, provider }
+      : { prompt: shots[index].prompt, provider, aspectRatio }
+    const normalizedBody = frameImageUrl
+      ? { ...body, aspectRatio }
+      : body
 
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(normalizedBody),
     })
     const data = await res.json()
     if (data.error) throw new Error(data.error)
@@ -688,6 +699,26 @@ async function fetchLipSyncResult(index: number) {
             </div>
           </div>
 
+          <div className="bg-[#111] border border-[#222] rounded-xl p-4">
+            <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-3">畫面比例</div>
+            <div className="grid grid-cols-3 gap-2">
+              {ASPECT_RATIOS.map(option => (
+                <button
+                  key={option.key}
+                  onClick={() => setAspectRatio(option.key)}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    aspectRatio === option.key
+                      ? 'border-[#e8d5b0] bg-[#e8d5b0]/10'
+                      : 'border-[#222] hover:border-[#444]'
+                  }`}
+                >
+                  <div className={`text-xs font-bold ${aspectRatio === option.key ? 'text-[#e8d5b0]' : 'text-[#e8e8e8]'}`}>{option.label}</div>
+                  <div className="text-[10px] text-[#555] mt-1">{option.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Shots 輸入 */}
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
@@ -817,7 +848,7 @@ async function fetchLipSyncResult(index: number) {
                   <div className="text-xs text-[#555]">{selectedPreset.desc}</div>
                 </div>
                 <div className="ml-auto flex gap-6">
-                  {[['Mode', '720p'], ['Duration', '5s'], ['Ratio', '9:16']].map(([k, v]) => (
+                  {[['Mode', '720p'], ['Duration', '5s'], ['Ratio', aspectRatio]].map(([k, v]) => (
                     <div key={k}>
                       <div className="text-[10px] text-[#333] font-mono uppercase">{k}</div>
                       <div className="text-sm text-[#e8d5b0] font-bold">{v}</div>
@@ -1040,7 +1071,7 @@ async function fetchLipSyncResult(index: number) {
                     </div>
 
                     <div className="px-5 py-3 border-t border-[#222] bg-[#0a0a0a] flex gap-6">
-                      {[['Camera', shot.camera_setting], ['Duration', '5s'], ['Ratio', '9:16'], ['Mode', '720p'], ['Engine', shot.videoProvider || videoProvider]].map(([k, v]) => (
+                      {[['Camera', shot.camera_setting], ['Duration', '5s'], ['Ratio', aspectRatio], ['Mode', '720p'], ['Engine', shot.videoProvider || videoProvider]].map(([k, v]) => (
                         <div key={k} className="text-[11px] text-[#333] font-mono">
                           {k}: <span className="text-[#e8d5b0]">{v}</span>
                         </div>

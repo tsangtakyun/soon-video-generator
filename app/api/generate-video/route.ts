@@ -3,7 +3,7 @@ import { fal } from '@fal-ai/client'
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, elementImageUrl, provider = 'kling' } = await req.json()
+    const { prompt, elementImageUrl, provider = 'kling', aspectRatio = '9:16' } = await req.json()
 
     const falApiKey = process.env.FAL_API_KEY
     if (!falApiKey) throw new Error('Missing FAL_API_KEY')
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
 
     const body: Record<string, unknown> = {
       prompt: uploadedImageUrl ? `${prompt}, @Element1 is the main character` : prompt,
-      aspect_ratio: '9:16',
+      aspect_ratio: aspectRatio,
       duration: '5',
       generate_audio: false,
     }
