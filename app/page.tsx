@@ -125,6 +125,7 @@ interface Shot {
   prompt: string
   camera_setting: string
   sourceInputSignature?: string
+  videoProvider?: 'kling' | 'seedance'
   frameApproved?: boolean
   videoUrl?: string
   videoStatus?: 'idle' | 'generating' | 'done' | 'error'
@@ -157,6 +158,7 @@ export default function Home() {
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null)
   const [showScenePicker, setShowScenePicker] = useState(false)
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([])
+  const [videoProvider, setVideoProvider] = useState<'kling' | 'seedance'>('kling')
 
   useEffect(() => {
   loadData()
@@ -244,6 +246,7 @@ async function loadData() {
       ...shot,
       id: inputId,
       sourceInputSignature: inputSignature,
+      videoProvider: 'kling',
       frameStatus: 'idle',
       frameApproved: false,
       videoStatus: 'idle',
@@ -315,12 +318,13 @@ async function loadData() {
   }
 
   async function generateVideo(index: number, frameImageUrl?: string) {
-  setShots(prev => { const n = [...prev]; n[index] = { ...n[index], videoStatus: 'generating', usedFrame: !!frameImageUrl }; return n })
+  const provider = videoProvider
+  setShots(prev => { const n = [...prev]; n[index] = { ...n[index], videoStatus: 'generating', usedFrame: !!frameImageUrl, videoProvider: provider }; return n })
   try {
     const endpoint = frameImageUrl ? '/api/image-to-video' : '/api/generate-video'
     const body = frameImageUrl
-      ? { prompt: shots[index].prompt, imageUrl: frameImageUrl }
-      : { prompt: shots[index].prompt }
+      ? { prompt: shots[index].prompt, imageUrl: frameImageUrl, provider }
+      : { prompt: shots[index].prompt, provider }
 
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -342,10 +346,10 @@ async function loadData() {
     setFetchingResult(index)
     try {
       const endpoint = shot.usedFrame ? '/api/check-image-video' : '/api/check-video'
-const res = await fetch(endpoint, {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requestId: shot.requestId }),
+        body: JSON.stringify({ requestId: shot.requestId, provider: shot.videoProvider || 'kling' }),
       })
       const data = await res.json()
       if (data.status === 'COMPLETED') {
@@ -653,6 +657,37 @@ async function fetchLipSyncResult(index: number) {
             )}
           </div>
 
+          <div className="bg-[#111] border border-[#222] rounded-xl p-4">
+            <div className="text-[10px] font-bold tracking-widest uppercase text-[#555] mb-3">影片引擎</div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setVideoProvider('kling')}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  videoProvider === 'kling'
+                    ? 'border-[#e8d5b0] bg-[#e8d5b0]/10'
+                    : 'border-[#222] hover:border-[#444]'
+                }`}
+              >
+                <div className={`text-xs font-bold ${videoProvider === 'kling' ? 'text-[#e8d5b0]' : 'text-[#e8e8e8]'}`}>Kling</div>
+                <div className="text-[10px] text-[#555] mt-1">目前預設，穩定沿用</div>
+              </button>
+              <button
+                onClick={() => setVideoProvider('seedance')}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  videoProvider === 'seedance'
+                    ? 'border-[#e8d5b0] bg-[#e8d5b0]/10'
+                    : 'border-[#222] hover:border-[#444]'
+                }`}
+              >
+                <div className={`text-xs font-bold ${videoProvider === 'seedance' ? 'text-[#e8d5b0]' : 'text-[#e8e8e8]'}`}>Seedance</div>
+                <div className="text-[10px] text-[#555] mt-1">同 prompt 比較口型同對白</div>
+              </button>
+            </div>
+            <div className="text-[10px] text-[#444] mt-3 leading-relaxed">
+              只會影響「生成影片」嗰一步；prompt、第一格、角色鎖定同沿用上一個 Shot 第一格流程全部保持不變。
+            </div>
+          </div>
+
           {/* Shots 輸入 */}
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
@@ -927,14 +962,16 @@ async function fetchLipSyncResult(index: number) {
                       {shot.videoStatus === 'generating' && (
                         <>
                           <div className="w-full py-3 border border-[#e8d5b0]/30 rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0]/50 text-center animate-pulse">
-                            ⏳ 生成中... 約需 3-5 分鐘
+                            ⏳ {shot.videoProvider === 'seedance' ? 'Seedance' : 'Kling'} 生成中... 約需 3-5 分鐘
                           </div>
                           <button onClick={() => fetchResult(i)} disabled={fetchingResult === i}
                             className="w-full py-3 bg-[#1a1a1a] border border-[#e8d5b0] rounded-xl text-xs font-bold tracking-widest uppercase text-[#e8d5b0] hover:bg-[#e8d5b0] hover:text-[#0a0a0a] transition-all disabled:opacity-50">
                             {fetchingResult === i ? '🔍 查詢中...' : '🔍 查詢影片結果'}
                           </button>
                           {shot.requestId && (
-                            <div className="text-[10px] text-[#333] font-mono text-center">Request ID: {shot.requestId}</div>
+                            <div className="text-[10px] text-[#333] font-mono text-center">
+                              Provider: {shot.videoProvider || 'kling'} · Request ID: {shot.requestId}
+                            </div>
                           )}
                         </>
                       )}
@@ -1003,7 +1040,7 @@ async function fetchLipSyncResult(index: number) {
                     </div>
 
                     <div className="px-5 py-3 border-t border-[#222] bg-[#0a0a0a] flex gap-6">
-                      {[['Camera', shot.camera_setting], ['Duration', '5s'], ['Ratio', '9:16'], ['Mode', '720p']].map(([k, v]) => (
+                      {[['Camera', shot.camera_setting], ['Duration', '5s'], ['Ratio', '9:16'], ['Mode', '720p'], ['Engine', shot.videoProvider || videoProvider]].map(([k, v]) => (
                         <div key={k} className="text-[11px] text-[#333] font-mono">
                           {k}: <span className="text-[#e8d5b0]">{v}</span>
                         </div>

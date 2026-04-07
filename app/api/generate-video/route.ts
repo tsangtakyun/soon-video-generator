@@ -3,7 +3,7 @@ import { fal } from '@fal-ai/client'
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, elementImageUrl } = await req.json()
+    const { prompt, elementImageUrl, provider = 'kling' } = await req.json()
 
     const falApiKey = process.env.FAL_API_KEY
     if (!falApiKey) throw new Error('Missing FAL_API_KEY')
@@ -30,6 +30,10 @@ export async function POST(req: NextRequest) {
       generate_audio: false,
     }
 
+    if (provider === 'seedance') {
+      body.resolution = '720p'
+    }
+
     if (uploadedImageUrl) {
       body.elements = [
         {
@@ -40,7 +44,11 @@ export async function POST(req: NextRequest) {
       ]
     }
 
-    const response = await fetch('https://queue.fal.run/fal-ai/kling-video/v3/pro/text-to-video', {
+    const queueId = provider === 'seedance'
+      ? 'bytedance/seedance-2.0/text-to-video'
+      : 'fal-ai/kling-video/v3/pro/text-to-video'
+
+    const response = await fetch(`https://queue.fal.run/${queueId}`, {
       method: 'POST',
       headers: {
         'Authorization': `Key ${falApiKey}`,
@@ -53,7 +61,7 @@ export async function POST(req: NextRequest) {
     console.log('Response:', JSON.stringify(data).substring(0, 300))
     if (!response.ok) throw new Error(data.detail || JSON.stringify(data))
 
-    return NextResponse.json({ request_id: data.request_id })
+    return NextResponse.json({ request_id: data.request_id, provider })
 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error'
