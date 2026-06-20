@@ -60,7 +60,7 @@ const OUTPUT_FORMATS: Record<OutputFormat, { label: string; aspectRatio: string;
   ig: {
     label: 'IG',
     aspectRatio: '9:16',
-    note: '直向 Reels / Shorts 尺寸',
+    note: '直向短片尺寸',
   },
   youtube: {
     label: 'YouTube',
@@ -70,16 +70,16 @@ const OUTPUT_FORMATS: Record<OutputFormat, { label: string; aspectRatio: string;
 }
 
 const DEFAULT_CHARACTER_PROMPT_LOCK = [
-  'Character Lock: Eggy',
-  'Main character is Eggy, a cute sunny-side-up egg mascot with a round yellow yolk face, white egg-white body, thin dark arms and legs, simple dot eyes, tiny smiling mouth, and playful Hong Kong humor.',
-  'Keep Eggy as the same non-human cartoon egg character in every shot. Do not turn Eggy into a realistic human, animal, robot, different food, or a different mascot.',
-  'Use the provided reference images as the source of truth for Eggy proportions, face, body outline, limbs, expressions, and personality.',
-  'Eggy can be happy, panicked, proud, hungry, scared, or dramatic, but must remain recognisably the same character.',
+  '角色鎖定：Eggy',
+  '主角是 Eggy，一隻可愛的太陽蛋角色；圓形黃色蛋黃臉、白色蛋白身體、幼黑手腳、簡單圓點眼、細小笑口，帶有輕鬆幽默的香港感。',
+  '每個鏡頭都要保持 Eggy 是同一隻非真人卡通蛋角色，不要變成真人、動物、機械人、其他食物或另一個吉祥物。',
+  '請以已上載的參考圖作為 Eggy 外形、比例、面部、蛋白輪廓、手腳、表情和性格的準則。',
+  'Eggy 可以開心、慌張、得戚、肚餓、驚訝或戲劇化，但必須保持同一個角色的辨識度。',
 ].join('\n')
 
 const SEGMENT_DEFAULTS = [
-  '我俾文字稿你，我想你發揮最大創意，鏡頭一直 movement，一鏡直落，由第1格去到第8格；你唔需要錄 VO，只需要 SFX / 環境聲：',
-  '我俾文字稿你，我想你發揮最大創意，鏡頭一直 movement，一鏡直落，由第8格去到最後一格；你唔需要錄 VO，只需要 SFX / 環境聲：',
+  '我俾文字稿你，我想你發揮最大創意，鏡頭要一直運動，一鏡直落，由第 1 格去到第 8 格；你唔需要錄旁白，只需要音效 / 環境聲：',
+  '我俾文字稿你，我想你發揮最大創意，鏡頭要一直運動，一鏡直落，由第 8 格去到最後一格；你唔需要錄旁白，只需要音效 / 環境聲：',
 ]
 
 const STATUS_LABELS: Record<SegmentStatus, string> = {
@@ -94,12 +94,12 @@ const STATUS_LABELS: Record<SegmentStatus, string> = {
 const SAFETY_WRAPPER = [
   '內容安全要求：請把故事處理成虛構公共事件的抽象影像，不要生成真實政治人物肖像、國旗、國歌、政黨標誌、警徽、暴力執法、拘捕、拖走、受傷或煽動性政治畫面。',
   '如文字稿涉及警察、示威、總統、國歌或選舉衝突，請改寫成「保安人員」「市民群體」「公共大樓」「行政人物剪影」「人群移動」「文件箱」等中性視覺符號。',
-  '保持 cinematic architectural scale-model / polygon humans 風格，以象徵性鏡頭、建築空間、光影、人群站位表達事件，不要直接重現敏感衝突。',
+  '保持電影感建築模型 / 低多邊形人物風格，以象徵性鏡頭、建築空間、光影、人群站位表達事件，不要直接重現敏感衝突。',
 ].join('\n')
 
 function createFreshSegments(): SegmentState[] {
   return [0, 1].map(index => ({
-    label: `Segment ${index + 1}`,
+    label: `第 ${index + 1} 段`,
     prompt: SEGMENT_DEFAULTS[index],
     requestId: '',
     endpointId: '',
@@ -144,8 +144,8 @@ function buildSeedancePrompt(prompt: string, index: number, inputMode: InputMode
   const referenceInstruction =
     inputMode === 'reference'
       ? [
-          `請嚴格依照 reference media 的順序推進畫面：由 @Image1 開始，按 @Image2、@Image3 一路去到 @Image${imageCount}。`,
-          '不要當成 collage；要把它們理解成連續 keyframes / storyboard beats，用一個流暢鏡頭或自然剪接串起來。',
+          `請嚴格依照參考素材的順序推進畫面：由 @Image1 開始，按 @Image2、@Image3 一路去到 @Image${imageCount}。`,
+          '不要當成拼貼圖；要把它們理解成連續關鍵畫面 / 分鏡節點，用一個流暢鏡頭或自然剪接串起來。',
         ].join('\n')
       : ''
 
@@ -264,8 +264,8 @@ export default function Home() {
   }
 
   function mergeCharacterPrompt(prompt: string, character: CharacterProfile) {
-    const marker = `Character Lock: ${character.name}`
-    if (prompt.includes(marker)) return prompt
+    const markers = [`角色鎖定：${character.name}`, `Character Lock: ${character.name}`]
+    if (markers.some(marker => prompt.includes(marker))) return prompt
     return [prompt.trim(), character.promptLock.trim()].filter(Boolean).join('\n\n')
   }
 
@@ -298,16 +298,16 @@ export default function Home() {
 
   async function createCharacterFromFiles(files: FileList | null) {
     const selectedFiles = Array.from(files ?? []).slice(0, MAX_CHARACTER_REFERENCES)
-    const trimmedName = characterName.trim() || 'Untitled Character'
+    const trimmedName = characterName.trim() || '未命名角色'
     const trimmedPrompt = characterPromptLock.trim()
 
     if (selectedFiles.length === 0) {
-      setCharacterUploadError('請先選擇 1-9 張角色 reference 圖。')
+      setCharacterUploadError('請先選擇 1-9 張角色參考圖。')
       return
     }
 
     if (!trimmedPrompt) {
-      setCharacterUploadError('請先填好角色 prompt lock。')
+      setCharacterUploadError('請先填好角色鎖定提示。')
       return
     }
 
@@ -336,7 +336,7 @@ export default function Home() {
       setSelectedCharacterId(character.id)
       applyCharacterToAll(character)
     } catch (error: unknown) {
-      setCharacterUploadError(error instanceof Error ? error.message : '角色 reference 上載失敗。')
+      setCharacterUploadError(error instanceof Error ? error.message : '角色參考圖上載失敗。')
     } finally {
       setCharacterUploading(false)
     }
@@ -384,7 +384,7 @@ export default function Home() {
             tier,
             outputFormat,
             inputMode,
-            fileName: fileName || (inputMode === 'reference' ? 'Reference media' : 'Storyboard grid'),
+            fileName: fileName || (inputMode === 'reference' ? '參考素材' : '分鏡圖'),
             imageUrl,
             segments: [segmentRecord],
           }
@@ -508,19 +508,19 @@ export default function Home() {
     } catch (error: unknown) {
       updateSegment(index, {
         referenceUploading: false,
-        error: error instanceof Error ? error.message : 'Reference image 上載失敗。',
+        error: error instanceof Error ? error.message : '參考圖上載失敗。',
       })
     }
   }
 
   async function submitSegment(index: number) {
     if (inputMode === 'grid' && !imageUrl) {
-      throw new Error('請先上載 storyboard grid 圖。')
+      throw new Error('請先上載分鏡圖。')
     }
 
     const segment = segments[index]
     if (inputMode === 'reference' && segment.referenceUrls.length === 0) {
-      throw new Error(`請先上載 ${segment.label} reference images。`)
+      throw new Error(`請先上載 ${segment.label} 的參考圖。`)
     }
 
     const finalPrompt = buildSeedancePrompt(
@@ -643,13 +643,13 @@ export default function Home() {
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-5 py-8">
         <header className="border-b border-[#222] pb-6">
           <div className="text-xs font-bold uppercase tracking-[0.3em] text-[#777]">
-            SOON Cold Tell
+            SOON 影片生成
           </div>
           <h1 className="mt-3 text-3xl font-bold tracking-tight">
-            Cold Tell 影片生成（Seedance 2.0）
+            影片生成（Seedance 2.0）
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-[#aaa]">
-            上載 storyboard grid 或每段 reference media，兩段分別送去 Seedance。固定輸出 {currentFormat.aspectRatio}、720p，並保留 Seedance 自帶環境聲。
+            上載分鏡圖或每段參考素材，兩段分別送去 Seedance。固定輸出 {currentFormat.aspectRatio}、720p，並保留 Seedance 自帶環境聲。
           </p>
         </header>
 
@@ -684,7 +684,7 @@ export default function Home() {
                     <div>
                       <div className="font-bold">{item.fileName}</div>
                       <div className="mt-1 text-xs text-[#777]">
-                        {formatDateTime(item.createdAt)} · {OUTPUT_FORMATS[item.outputFormat ?? 'ig'].label} {OUTPUT_FORMATS[item.outputFormat ?? 'ig'].aspectRatio} · {item.tier === 'fast' ? 'Fast' : 'Standard'} · {item.segments.length} 段
+                        {formatDateTime(item.createdAt)} · {OUTPUT_FORMATS[item.outputFormat ?? 'ig'].label} {OUTPUT_FORMATS[item.outputFormat ?? 'ig'].aspectRatio} · {item.tier === 'fast' ? '快速' : '標準'} · {item.segments.length} 段
                       </div>
                     </div>
                     <button
@@ -720,7 +720,7 @@ export default function Home() {
 
             <div className="mt-5">
               <div className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-[#777]">
-                Output
+                輸出格式
               </div>
               <div className="grid grid-cols-2 gap-3">
                 {(Object.keys(OUTPUT_FORMATS) as OutputFormat[]).map(format => {
@@ -748,7 +748,7 @@ export default function Home() {
 
             <div className="mt-5">
               <div className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-[#777]">
-                Tier
+                生成速度
               </div>
               <div className="grid grid-cols-2 gap-3">
                 {(['fast', 'standard'] as Tier[]).map(option => (
@@ -762,7 +762,7 @@ export default function Home() {
                         : 'border-[#2a2a2a] bg-[#0c0c0c] hover:border-[#555]'
                     }`}
                   >
-                    <div className="font-bold">{option === 'fast' ? 'Fast' : 'Standard'}</div>
+                    <div className="font-bold">{option === 'fast' ? '快速' : '標準'}</div>
                     <div className="mt-1 text-xs text-[#aaa]">
                       約 US${option === 'fast' ? '0.24' : '0.30'} / 秒
                     </div>
@@ -773,7 +773,7 @@ export default function Home() {
 
             <div className="mt-5">
               <div className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-[#777]">
-                Input Mode
+                輸入模式
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <button
@@ -785,8 +785,8 @@ export default function Home() {
                       : 'border-[#2a2a2a] bg-[#0c0c0c] hover:border-[#555]'
                   }`}
                 >
-                  <div className="font-bold">單張 Grid</div>
-                  <div className="mt-1 text-xs text-[#aaa]">上載一張 15 格 reference collage</div>
+                  <div className="font-bold">單張分鏡圖</div>
+                  <div className="mt-1 text-xs text-[#aaa]">上載一張 15 格參考圖</div>
                 </button>
                 <button
                   type="button"
@@ -797,7 +797,7 @@ export default function Home() {
                       : 'border-[#2a2a2a] bg-[#0c0c0c] hover:border-[#555]'
                   }`}
                 >
-                  <div className="font-bold">多圖 Reference</div>
+                  <div className="font-bold">多圖參考</div>
                   <div className="mt-1 text-xs text-[#aaa]">每段最多 9 張，建議 1-8 / 8-15</div>
                 </button>
               </div>
@@ -806,9 +806,9 @@ export default function Home() {
             <div className="mt-5 rounded-2xl border border-[#252525] bg-[#0c0c0c] p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-bold">Character Library</div>
+                  <div className="text-sm font-bold">角色庫</div>
                   <div className="mt-1 text-xs text-[#777]">
-                    Save fal.ai reference images once, then reuse them for Seedance reference-to-video.
+                    先把角色參考圖上載到 fal.ai，之後可重複套用到 Seedance 多圖參考影片。
                   </div>
                 </div>
                 {selectedCharacter && (
@@ -831,7 +831,7 @@ export default function Home() {
                   >
                     {characterLibrary.map(character => (
                       <option key={character.id} value={character.id}>
-                        {character.name} ({character.assetUrls.length} refs)
+                        {character.name}（{character.assetUrls.length} 張參考圖）
                       </option>
                     ))}
                   </select>
@@ -842,7 +842,7 @@ export default function Home() {
                         <div>
                           <div className="text-sm font-bold">{selectedCharacter.name}</div>
                           <div className="mt-1 text-xs text-[#777]">
-                            {selectedCharacter.assetUrls.length} reference images
+                            {selectedCharacter.assetUrls.length} 張參考圖
                           </div>
                         </div>
                         <button
@@ -859,7 +859,7 @@ export default function Home() {
                           <img
                             key={`${selectedCharacter.id}-${url}`}
                             src={url}
-                            alt={`${selectedCharacter.name} reference ${imageIndex + 1}`}
+                            alt={`${selectedCharacter.name} 參考圖 ${imageIndex + 1}`}
                             className="h-20 w-full rounded-lg border border-[#222] object-cover"
                           />
                         ))}
@@ -893,7 +893,7 @@ export default function Home() {
                 <input
                   value={characterName}
                   onChange={event => setCharacterName(event.target.value)}
-                  placeholder="Character name"
+                  placeholder="角色名稱"
                   className="w-full rounded-lg border border-[#333] bg-black px-3 py-2 text-sm outline-none transition placeholder:text-[#555] focus:border-[#e8d5b0]"
                 />
                 <textarea
@@ -903,7 +903,7 @@ export default function Home() {
                   className="w-full resize-y rounded-lg border border-[#333] bg-black px-3 py-2 text-xs leading-5 outline-none transition placeholder:text-[#555] focus:border-[#e8d5b0]"
                 />
                 <label className="flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-[#333] bg-black px-4 py-4 text-center text-xs font-bold transition hover:border-[#e8d5b0] hover:text-[#e8d5b0]">
-                  {characterUploading ? '上載角色中...' : '新增角色 reference（1-9 張）'}
+                  {characterUploading ? '上載角色中...' : '新增角色參考圖（1-9 張）'}
                   <input
                     type="file"
                     multiple
@@ -923,7 +923,7 @@ export default function Home() {
             {inputMode === 'grid' && (
               <div className="mt-6">
                 <div className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-[#777]">
-                  Storyboard Grid
+                  分鏡圖
                 </div>
                 <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-[#333] bg-[#0c0c0c] px-4 py-8 text-center transition hover:border-[#e8d5b0]">
                   <input
@@ -941,7 +941,7 @@ export default function Home() {
                     {previewUrl && (
                       <img
                         src={previewUrl}
-                        alt="Storyboard grid preview"
+                      alt="分鏡圖預覽"
                         className="mb-3 max-h-72 w-full rounded-lg object-contain"
                       />
                     )}
@@ -987,7 +987,7 @@ export default function Home() {
                     <h2 className="text-base font-bold">{segment.label}</h2>
                     <div className="mt-1 text-xs text-[#777]">
                       狀態：{STATUS_LABELS[segment.status]}
-                      {segment.requestId && ` · Request ${segment.requestId.slice(0, 8)}`}
+                      {segment.requestId && ` · 請求 ${segment.requestId.slice(0, 8)}`}
                     </div>
                   </div>
                   <button
@@ -1010,10 +1010,10 @@ export default function Home() {
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <div className="text-sm font-bold">
-                          {index === 0 ? '上載第 1-8 格 media' : '上載第 8-15 格 media'}
+                          {index === 0 ? '上載第 1-8 格參考素材' : '上載第 8-15 格參考素材'}
                         </div>
                         <div className="mt-1 text-xs text-[#777]">
-                          最多 9 張，生成時會用 @Image1、@Image2... 做 reference。
+                          最多 9 張，生成時會用 @Image1、@Image2... 作為參考圖。
                         </div>
                       </div>
                       <label className="cursor-pointer rounded-lg border border-[#333] px-3 py-2 text-xs font-bold transition hover:border-[#e8d5b0] hover:text-[#e8d5b0]">
@@ -1034,7 +1034,7 @@ export default function Home() {
                           <div key={`${segment.label}-ref-${url}`} className="rounded-lg border border-[#222] bg-black/40 p-2">
                             <img
                               src={url}
-                              alt={`Reference ${imageIndex + 1}`}
+                              alt={`參考圖 ${imageIndex + 1}`}
                               className="h-24 w-full rounded object-cover"
                             />
                             <div className="mt-1 truncate text-[11px] text-[#777]">
@@ -1047,10 +1047,10 @@ export default function Home() {
 
                     <div className="mt-3 text-xs text-[#777]">
                       {segment.referenceUploading
-                        ? 'Reference images 上載中...'
+                        ? '參考圖上載中...'
                         : segment.referenceUrls.length > 0
-                          ? `${segment.referenceUrls.length} 張 reference 已上載`
-                          : '等待上載 reference images'}
+                          ? `${segment.referenceUrls.length} 張參考圖已上載`
+                          : '等待上載參考圖'}
                     </div>
                   </div>
                 )}
@@ -1063,7 +1063,7 @@ export default function Home() {
                 />
 
                 {segment.endpointId && (
-                  <div className="mt-2 text-xs text-[#666]">Endpoint：{segment.endpointId}</div>
+                  <div className="mt-2 text-xs text-[#666]">生成端點：{segment.endpointId}</div>
                 )}
 
                 {segment.error && (
