@@ -219,6 +219,7 @@ export default function Home() {
   const [characterPromptLock, setCharacterPromptLock] = useState(DEFAULT_CHARACTER_PROMPT_LOCK)
   const [characterUploading, setCharacterUploading] = useState(false)
   const [characterUploadError, setCharacterUploadError] = useState('')
+  const [editingCharacter, setEditingCharacter] = useState(false)
   const [globalError, setGlobalError] = useState('')
   const previewObjectUrl = useRef('')
   const referenceObjectUrls = useRef<string[]>([])
@@ -361,6 +362,7 @@ export default function Home() {
       persistCharacterLibrary(nextLibrary)
       setSelectedCharacterId(character.id)
       applyCharacterToAll(character)
+      setEditingCharacter(false)
     } catch (error: unknown) {
       setCharacterUploadError(error instanceof Error ? error.message : '角色參考圖上載失敗。')
     } finally {
@@ -372,6 +374,13 @@ export default function Home() {
     const nextLibrary = characterLibrary.filter(character => character.id !== characterId)
     persistCharacterLibrary(nextLibrary)
     setSelectedCharacterId(nextLibrary[0]?.id ?? '')
+  }
+
+  function editSelectedCharacter(character: CharacterProfile) {
+    setCharacterName(character.name)
+    setCharacterPromptLock(character.promptLock)
+    setCharacterUploadError('')
+    setEditingCharacter(true)
   }
 
   function saveCompletedSegment(index: number, videoUrl: string, requestId: string, endpointId: string) {
@@ -921,36 +930,75 @@ export default function Home() {
                 </div>
               )}
 
-              <div className="mt-4 space-y-3 border-t border-[#222] pt-4">
-                <div className="text-xs font-bold text-[#888]">新增／更新角色參考圖</div>
-                <div className="text-xs leading-5 text-[#666]">
-                  平時只需要在上面揀角色再按套用。只有建立新角色，或想補充角色參考圖時，先用下面欄位上載。
+              <div className="mt-4 border-t border-[#222] pt-4">
+                <div className="flex flex-wrap gap-2">
+                  {selectedCharacter && (
+                    <button
+                      type="button"
+                      onClick={() => editSelectedCharacter(selectedCharacter)}
+                      className="rounded-lg border border-[#333] px-3 py-2 text-xs font-bold transition hover:border-[#e8d5b0] hover:text-[#e8d5b0]"
+                    >
+                      編輯角色
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCharacterName('')
+                      setCharacterPromptLock(DEFAULT_CHARACTER_PROMPT_LOCK)
+                      setCharacterUploadError('')
+                      setEditingCharacter(true)
+                    }}
+                    className="rounded-lg border border-[#333] px-3 py-2 text-xs font-bold transition hover:border-[#e8d5b0] hover:text-[#e8d5b0]"
+                  >
+                    新增角色
+                  </button>
                 </div>
-                <input
-                  value={characterName}
-                  onChange={event => setCharacterName(event.target.value)}
-                  placeholder="角色名稱"
-                  className="w-full rounded-lg border border-[#333] bg-black px-3 py-2 text-sm outline-none transition placeholder:text-[#555] focus:border-[#e8d5b0]"
-                />
-                <textarea
-                  value={characterPromptLock}
-                  onChange={event => setCharacterPromptLock(event.target.value)}
-                  rows={5}
-                  className="w-full resize-y rounded-lg border border-[#333] bg-black px-3 py-2 text-xs leading-5 outline-none transition placeholder:text-[#555] focus:border-[#e8d5b0]"
-                />
-                <label className="flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-[#333] bg-black px-4 py-4 text-center text-xs font-bold transition hover:border-[#e8d5b0] hover:text-[#e8d5b0]">
-                  {characterUploading ? '上載角色中...' : '上載並儲存角色參考圖（1-9 張）'}
-                  <input
-                    type="file"
-                    multiple
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={event => void createCharacterFromFiles(event.target.files)}
-                    className="hidden"
-                  />
-                </label>
-                {characterUploadError && (
-                  <div className="whitespace-pre-wrap rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
-                    {characterUploadError}
+
+                {editingCharacter && (
+                  <div className="mt-4 space-y-3 rounded-xl border border-[#222] bg-black/30 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="text-xs font-bold text-[#888]">建立／編輯角色</div>
+                        <div className="mt-1 text-xs leading-5 text-[#666]">
+                          平時只需要在上面揀角色再套用；只有建立新角色，或想補充角色參考圖時，先進入這裡。
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditingCharacter(false)}
+                        className="rounded-lg border border-[#333] px-3 py-2 text-xs font-bold transition hover:border-[#e8d5b0] hover:text-[#e8d5b0]"
+                      >
+                        收起
+                      </button>
+                    </div>
+                    <input
+                      value={characterName}
+                      onChange={event => setCharacterName(event.target.value)}
+                      placeholder="角色名稱"
+                      className="w-full rounded-lg border border-[#333] bg-black px-3 py-2 text-sm outline-none transition placeholder:text-[#555] focus:border-[#e8d5b0]"
+                    />
+                    <textarea
+                      value={characterPromptLock}
+                      onChange={event => setCharacterPromptLock(event.target.value)}
+                      rows={5}
+                      className="w-full resize-y rounded-lg border border-[#333] bg-black px-3 py-2 text-xs leading-5 outline-none transition placeholder:text-[#555] focus:border-[#e8d5b0]"
+                    />
+                    <label className="flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-[#333] bg-black px-4 py-4 text-center text-xs font-bold transition hover:border-[#e8d5b0] hover:text-[#e8d5b0]">
+                      {characterUploading ? '上載角色中...' : '上載並儲存角色參考圖（1-9 張）'}
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/jpeg,image/png,image/webp"
+                        onChange={event => void createCharacterFromFiles(event.target.files)}
+                        className="hidden"
+                      />
+                    </label>
+                    {characterUploadError && (
+                      <div className="whitespace-pre-wrap rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                        {characterUploadError}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
