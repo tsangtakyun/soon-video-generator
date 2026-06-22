@@ -127,7 +127,8 @@ export async function POST(req: NextRequest) {
       resolution: '720p',
       duration: selectedMode === 'reference' ? 'auto' : '15',
       aspect_ratio: ASPECT_RATIOS[selectedFormat],
-      generate_audio: true,
+      // Pure text prompts can trigger Seedance audio policy false positives.
+      generate_audio: selectedMode !== 'text',
     }
 
     const input =

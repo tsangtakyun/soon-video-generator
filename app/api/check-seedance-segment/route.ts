@@ -10,10 +10,37 @@ const ALLOWED_ENDPOINTS = new Set([
   'bytedance/seedance-2.0/reference-to-video',
 ])
 
-function stringifyError(value: unknown): string {
+function extractErrorText(value: unknown): string {
   if (!value) return ''
   if (typeof value === 'string') return value
   if (value instanceof Error) return value.message
+
+  if (Array.isArray(value)) {
+    return value.map(extractErrorText).filter(Boolean).join('\n')
+  }
+
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    const direct =
+      extractErrorText(record.msg) ||
+      extractErrorText(record.message) ||
+      extractErrorText(record.error) ||
+      extractErrorText(record.detail)
+    if (direct) return direct
+
+    const body = record.body as { detail?: unknown } | undefined
+    const bodyDetail = extractErrorText(body?.detail)
+    if (bodyDetail) return bodyDetail
+
+    const type = extractErrorText(record.type)
+    const ctx = record.ctx as Record<string, unknown> | undefined
+    const extraInfo = ctx?.extra_info as Record<string, unknown> | undefined
+    const reason = extractErrorText(extraInfo?.reason)
+    if (type || reason) return [type, reason].filter(Boolean).join('\n')
+
+    const loc = Array.isArray(record.loc) ? record.loc.join('.') : ''
+    if (loc) return [loc, type].filter(Boolean).join(': ')
+  }
 
   try {
     return JSON.stringify(value)
@@ -26,18 +53,18 @@ function getFalErrorMessage(error: unknown) {
   if (error && typeof error === 'object') {
     const record = error as Record<string, unknown>
     const body = record.body as { detail?: unknown } | undefined
-    const detail = stringifyError(body?.detail)
-    if (detail) return detail
+    const detail = extractErrorText(body?.detail)
+    if (detail) return normalizeJobError(detail)
   }
 
-  return stringifyError(error) || '檢查生成狀態失敗。'
+  return normalizeJobError(extractErrorText(error) || '檢查生成狀態失敗。')
 }
 
 function normalizeJobError(message: string) {
-  if (/content_policy_violation|sensitive content|partner_validation_failed/i.test(message)) {
+  if (/Output audio has sensitive content|content_policy_violation|sensitive content|partner_validation_failed/i.test(message)) {
     return [
-      'Seedance 內容審核擋咗呢段影片：畫面或 prompt 可能涉及真實政治人物、警察/示威衝突、國歌、拘捕/拖走等敏感元素。',
-      '請改用虛構地點同虛構角色，避免真實政治肖像、國旗/國歌、警徽、暴力執法字眼；可以描述成「保安人員」「市民群體」「公共大樓外的人群移動」。',
+      'Seedance 判斷生成音訊可能包含敏感內容，所以拒絕了這次生成。',
+      '我已將純文字模式預設改為不生成原生音訊。請再試一次；如果仍然被拒，可以把 prompt 寫得更中性，例如把「He treats the banana like you」改成「He mistakes the banana for a friend」。',
     ].join('\n')
   }
 
@@ -77,7 +104,7 @@ export async function POST(req: NextRequest) {
       const videoUrl = data.video?.url || data.videos?.[0]?.url
 
       if (!videoUrl) {
-        throw new Error('Seedance 已完成，但回傳結果沒有 video URL。')
+        throw new Error('Seedance 已完成，但回傳內容沒有 video URL。')
       }
 
       return NextResponse.json({ status: 'COMPLETED', videoUrl })
@@ -86,9 +113,9 @@ export async function POST(req: NextRequest) {
     if (statusName === 'ERROR') {
       const statusRecord = status as unknown as Record<string, unknown>
       const errorMessage =
-        stringifyError(statusRecord.error) ||
-        stringifyError(statusRecord.message) ||
-        stringifyError(statusRecord.logs) ||
+        extractErrorText(statusRecord.error) ||
+        extractErrorText(statusRecord.message) ||
+        extractErrorText(statusRecord.logs) ||
         'Seedance 生成失敗。'
 
       return NextResponse.json(
