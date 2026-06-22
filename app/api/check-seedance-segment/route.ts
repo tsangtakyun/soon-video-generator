@@ -2,6 +2,8 @@ import { fal } from '@fal-ai/client'
 import { NextRequest, NextResponse } from 'next/server'
 
 const ALLOWED_ENDPOINTS = new Set([
+  'bytedance/seedance-2.0/fast/text-to-video',
+  'bytedance/seedance-2.0/text-to-video',
   'bytedance/seedance-2.0/fast/image-to-video',
   'bytedance/seedance-2.0/image-to-video',
   'bytedance/seedance-2.0/fast/reference-to-video',

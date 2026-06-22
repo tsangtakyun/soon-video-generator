@@ -4,7 +4,7 @@ import { ChangeEvent, useEffect, useRef, useState } from 'react'
 
 type Tier = 'fast' | 'standard'
 type OutputFormat = 'ig' | 'youtube'
-type InputMode = 'grid' | 'reference'
+type InputMode = 'text' | 'grid' | 'reference'
 type SegmentStatus = 'idle' | 'submitting' | 'queued' | 'generating' | 'completed' | 'error'
 
 type SegmentState = {
@@ -206,7 +206,7 @@ async function compressImageForUpload(file: File) {
 export default function Home() {
   const [tier, setTier] = useState<Tier>('fast')
   const [outputFormat, setOutputFormat] = useState<OutputFormat>('ig')
-  const [inputMode, setInputMode] = useState<InputMode>('grid')
+  const [inputMode, setInputMode] = useState<InputMode>('text')
   const [fileName, setFileName] = useState('')
   const [previewUrl, setPreviewUrl] = useState('')
   const [imageUrl, setImageUrl] = useState('')
@@ -401,7 +401,9 @@ export default function Home() {
             tier,
             outputFormat,
             inputMode,
-            fileName: fileName || (inputMode === 'reference' ? '參考素材' : '分鏡圖'),
+            fileName:
+              fileName ||
+              (inputMode === 'text' ? '純文字生成' : inputMode === 'reference' ? '參考素材' : '分鏡圖'),
             imageUrl,
             segments: [segmentRecord],
           }
@@ -531,11 +533,16 @@ export default function Home() {
   }
 
   async function submitSegment(index: number) {
+    const segment = segments[index]
+
+    if (!segment.prompt.trim()) {
+      throw new Error(`請先填寫 ${segment.label} 的 prompt。`)
+    }
+
     if (inputMode === 'grid' && !imageUrl) {
       throw new Error('請先上載分鏡圖。')
     }
 
-    const segment = segments[index]
     if (inputMode === 'reference' && segment.referenceUrls.length === 0) {
       throw new Error(`請先上載 ${segment.label} 的參考圖。`)
     }
@@ -649,7 +656,9 @@ export default function Home() {
       segment.referenceUploading || ['submitting', 'queued', 'generating'].includes(segment.status)
     )
   const canGenerate =
-    inputMode === 'grid'
+    inputMode === 'text'
+      ? segments.every(segment => segment.prompt.trim())
+      : inputMode === 'grid'
       ? Boolean(imageUrl)
       : segments.every(segment => segment.referenceUrls.length > 0)
   const currentFormat = OUTPUT_FORMATS[outputFormat]
@@ -792,7 +801,19 @@ export default function Home() {
               <div className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-[#777]">
                 輸入模式
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() => setInputMode('text')}
+                  className={`rounded-xl border p-4 text-left transition ${
+                    inputMode === 'text'
+                      ? 'border-[#e8d5b0] bg-[#e8d5b0]/10'
+                      : 'border-[#2a2a2a] bg-[#0c0c0c] hover:border-[#555]'
+                  }`}
+                >
+                  <div className="font-bold">純文字</div>
+                  <div className="mt-1 text-xs text-[#aaa]">只輸入 prompt，不用上載圖片</div>
+                </button>
                 <button
                   type="button"
                   onClick={() => setInputMode('grid')}
@@ -1062,7 +1083,11 @@ export default function Home() {
                     disabled={
                       uploading ||
                       segment.referenceUploading ||
-                      (inputMode === 'grid' ? !imageUrl : segment.referenceUrls.length === 0) ||
+                      (inputMode === 'text'
+                        ? !segment.prompt.trim()
+                        : inputMode === 'grid'
+                        ? !imageUrl
+                        : segment.referenceUrls.length === 0) ||
                       ['submitting', 'queued', 'generating'].includes(segment.status)
                     }
                     className="rounded-lg border border-[#333] px-4 py-2 text-sm font-bold transition hover:border-[#e8d5b0] hover:text-[#e8d5b0] disabled:cursor-not-allowed disabled:opacity-40"

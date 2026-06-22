@@ -3,7 +3,12 @@ import { NextRequest, NextResponse } from 'next/server'
 
 type SeedanceTier = 'fast' | 'standard'
 type OutputFormat = 'ig' | 'youtube'
-type SeedanceMode = 'image' | 'reference'
+type SeedanceMode = 'image' | 'reference' | 'text'
+
+const TEXT_ENDPOINTS: Record<SeedanceTier, string> = {
+  fast: 'bytedance/seedance-2.0/fast/text-to-video',
+  standard: 'bytedance/seedance-2.0/text-to-video',
+}
 
 const IMAGE_ENDPOINTS: Record<SeedanceTier, string> = {
   fast: 'bytedance/seedance-2.0/fast/image-to-video',
@@ -99,9 +104,12 @@ export async function POST(req: NextRequest) {
 
     const selectedTier: SeedanceTier = tier === 'standard' ? 'standard' : 'fast'
     const selectedFormat: OutputFormat = outputFormat === 'youtube' ? 'youtube' : 'ig'
-    const selectedMode: SeedanceMode = mode === 'reference' ? 'reference' : 'image'
+    const selectedMode: SeedanceMode =
+      mode === 'reference' ? 'reference' : mode === 'text' ? 'text' : 'image'
     const endpointId =
-      selectedMode === 'reference'
+      selectedMode === 'text'
+        ? TEXT_ENDPOINTS[selectedTier]
+        : selectedMode === 'reference'
         ? REFERENCE_ENDPOINTS[selectedTier]
         : IMAGE_ENDPOINTS[selectedTier]
 
@@ -123,7 +131,9 @@ export async function POST(req: NextRequest) {
     }
 
     const input =
-      selectedMode === 'reference'
+      selectedMode === 'text'
+        ? baseInput
+        : selectedMode === 'reference'
         ? {
             ...baseInput,
             image_urls: Array.isArray(imageUrls)
@@ -135,7 +145,9 @@ export async function POST(req: NextRequest) {
             image_url: typeof imageUrl === 'string' ? imageUrl : '',
           }
 
-    if (selectedMode === 'reference') {
+    if (selectedMode === 'text') {
+      // Text-to-video only needs the prompt and generation settings.
+    } else if (selectedMode === 'reference') {
       if (!('image_urls' in input) || input.image_urls.length === 0) {
         throw new Error('請先上載 reference images。')
       }
