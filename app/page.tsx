@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, useEffect, useRef, useState } from 'react'
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react'
 
 type Tier = 'fast' | 'standard'
 type OutputFormat = 'ig' | 'youtube'
@@ -52,31 +52,30 @@ type CharacterProfile = {
 const HISTORY_KEY = 'soon-video-generator:recent-runs'
 const CHARACTER_LIBRARY_KEY = 'soon-video-generator:character-library'
 const MAX_HISTORY = 8
+const MAX_CHARACTER_REFERENCES = 9
 const SAFE_UPLOAD_BYTES = 4 * 1024 * 1024
 const MAX_COMPRESSED_DIMENSION = 2048
-const MAX_CHARACTER_REFERENCES = 9
 
 const OUTPUT_FORMATS: Record<OutputFormat, { label: string; aspectRatio: string; note: string }> = {
-  ig: {
-    label: 'IG',
-    aspectRatio: '9:16',
-    note: '直向短片尺寸',
-  },
-  youtube: {
-    label: 'YouTube',
-    aspectRatio: '16:9',
-    note: '橫向 YouTube 尺寸',
-  },
+  ig: { label: 'IG', aspectRatio: '9:16', note: '直向短片尺寸' },
+  youtube: { label: 'YouTube', aspectRatio: '16:9', note: '橫向 YouTube 尺寸' },
+}
+
+const STATUS_LABELS: Record<SegmentStatus, string> = {
+  idle: '未生成',
+  submitting: '提交中',
+  queued: '排隊中',
+  generating: '生成中',
+  completed: '完成',
+  error: '失敗',
 }
 
 const DEFAULT_CHARACTER_PROMPT_LOCK = [
   '角色鎖定：Eggy',
-  '主角是 Eggy，一隻原創、可愛、圓潤、精力充沛的太陽蛋角色；白色蛋白身體、圓形黃色蛋黃臉、幼黑手腳、簡單圓點眼、細小笑口，帶有輕鬆幽默的香港感。',
-  'Eggy 性格天真、貪吃、樂觀、容易驚慌；行動有少少笨拙但很討喜，表情可以誇張，動作可以有兒童動畫式的喜劇節奏。',
-  '每個鏡頭都要保持 Eggy 是同一隻非真人卡通蛋角色，不要變成真人、動物、機械人、其他食物或另一個吉祥物。',
-  '請以已上載的參考圖作為 Eggy 外形、比例、面部、蛋白輪廓、手腳、表情和性格的準則。',
-  'Eggy 可以開心、慌張、得戚、肚餓、驚訝或戲劇化，但必須保持同一個角色的辨識度。',
-  '整體感覺必須是原創可愛吉祥物，不要模仿、重現或引用任何現有卡通角色。',
+  '主角是 Eggy，一隻可愛的太陽蛋角色；白色蛋白身體、圓形黃色蛋黃臉、短短幼黑手腳、簡單點狀眼睛、細小嘴巴、表情非常豐富。',
+  'Eggy 的喜劇感來自純真、笨拙、誇張反應和默劇式肢體語言；要有明亮黃色角色的親切感，但不要模仿任何現有卡通角色或品牌。',
+  '每個鏡頭都保持同一隻 Eggy：同一個蛋白輪廓、同一張蛋黃臉、同一雙幼黑手腳、同一種天真又荒謬的氣質。',
+  '畫面可以是電影感 3D 動畫或高質感玩具模型風格，角色表情要清楚，動作要簡潔而有戲劇性。',
 ].join('\n')
 
 const BUILT_IN_CHARACTER: CharacterProfile = {
@@ -88,30 +87,31 @@ const BUILT_IN_CHARACTER: CharacterProfile = {
   createdAt: '',
 }
 
-const SEGMENT_DEFAULTS = [
-  '我俾文字稿你，我想你發揮最大創意，鏡頭要一直運動，一鏡直落，由第 1 格去到第 8 格；你唔需要錄旁白，只需要音效 / 環境聲：',
-  '我俾文字稿你，我想你發揮最大創意，鏡頭要一直運動，一鏡直落，由第 8 格去到最後一格；你唔需要錄旁白，只需要音效 / 環境聲：',
+const DEFAULT_PROMPTS = [
+  [
+    'Eggy 覺得很孤單。',
+    '他在路邊看見一條香蕉，以為它是朋友。',
+    'Eggy 小心翼翼坐在香蕉旁邊，試著跟它聊天。',
+    '夕陽很暖，畫面有點荒謬但很溫柔。',
+    '可愛喜劇，表情誇張，鏡頭慢慢推近。',
+  ].join('\n'),
+  [
+    'Eggy 發現香蕉其實只是香蕉。',
+    '他先呆住，然後戲劇性地倒在地上。',
+    '下一秒他又坐起來，假裝自己沒事。',
+    '節奏像短片笑位，最後留一個尷尬又可愛的停頓。',
+  ].join('\n'),
 ]
 
-const STATUS_LABELS: Record<SegmentStatus, string> = {
-  idle: '未生成',
-  submitting: '提交中',
-  queued: '排隊中',
-  generating: '生成中',
-  completed: '完成',
-  error: '失敗',
-}
-
 const SAFETY_WRAPPER = [
-  '內容安全要求：請把故事處理成虛構公共事件的抽象影像，不要生成真實政治人物肖像、國旗、國歌、政黨標誌、警徽、暴力執法、拘捕、拖走、受傷或煽動性政治畫面。',
-  '如文字稿涉及警察、示威、總統、國歌或選舉衝突，請改寫成「保安人員」「市民群體」「公共大樓」「行政人物剪影」「人群移動」「文件箱」等中性視覺符號。',
-  '保持電影感建築模型 / 低多邊形人物風格，以象徵性鏡頭、建築空間、光影、人群站位表達事件，不要直接重現敏感衝突。',
+  '內容安全要求：請使用完全虛構的角色與場景，不要生成真實政治人物、國旗、國歌、政黨標誌、警徽、暴力執法、受傷或煽動性政治畫面。',
+  '如果需要群眾、公共空間或衝突感，請改成抽象、非真實地點、低多邊形人物或遠景剪影處理。',
 ].join('\n')
 
 function createFreshSegments(): SegmentState[] {
   return [0, 1].map(index => ({
     label: `第 ${index + 1} 段`,
-    prompt: SEGMENT_DEFAULTS[index],
+    prompt: DEFAULT_PROMPTS[index],
     requestId: '',
     endpointId: '',
     status: 'idle',
@@ -138,31 +138,17 @@ function formatBytes(bytes: number) {
   return `${Math.ceil(bytes / 1024)} KB`
 }
 
-function stripDefaultLead(text: string) {
-  let cleaned = text.trim()
-  for (const defaultPrompt of SEGMENT_DEFAULTS) {
-    if (cleaned.startsWith(defaultPrompt)) {
-      cleaned = cleaned.slice(defaultPrompt.length).trim()
-    }
-  }
-
-  return cleaned
-}
-
-function buildSeedancePrompt(prompt: string, index: number, inputMode: InputMode, imageCount: number) {
-  const userScript = stripDefaultLead(prompt)
-  const segmentLead = SEGMENT_DEFAULTS[index]
+function buildSeedancePrompt(prompt: string, inputMode: InputMode, imageCount: number) {
   const referenceInstruction =
     inputMode === 'reference'
       ? [
-          `請嚴格依照參考素材的順序推進畫面：由 @Image1 開始，按 @Image2、@Image3 一路去到 @Image${imageCount}。`,
-          '不要當成拼貼圖；要把它們理解成連續關鍵畫面 / 分鏡節點，用一個流暢鏡頭或自然剪接串起來。',
+          `請使用已上載的 ${imageCount} 張參考圖作為視覺參考。`,
+          '如果 prompt 提到 @Image1、@Image2 等，請按對應圖片理解角色、場景、構圖或動作。',
+          '不要將所有參考圖硬塞進同一個畫面；請按文字描述選擇最相關的視覺元素。',
         ].join('\n')
       : ''
 
-  return [segmentLead, userScript, referenceInstruction, SAFETY_WRAPPER]
-    .filter(Boolean)
-    .join('\n\n')
+  return [prompt.trim(), referenceInstruction, SAFETY_WRAPPER].filter(Boolean).join('\n\n')
 }
 
 async function compressImageForUpload(file: File) {
@@ -181,20 +167,15 @@ async function compressImageForUpload(file: File) {
     context.drawImage(image, 0, 0, canvas.width, canvas.height)
     image.close()
 
-    const qualities = [0.92, 0.86, 0.8]
-    for (const quality of qualities) {
-      const blob = await new Promise<Blob | null>(resolve => {
-        canvas.toBlob(resolve, 'image/jpeg', quality)
-      })
+    for (const quality of [0.92, 0.86, 0.8]) {
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', quality))
       if (!blob) continue
 
       const compressedFile = new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', {
         type: 'image/jpeg',
       })
 
-      if (compressedFile.size <= SAFE_UPLOAD_BYTES || quality === qualities[qualities.length - 1]) {
-        return compressedFile
-      }
+      if (compressedFile.size <= SAFE_UPLOAD_BYTES || quality === 0.8) return compressedFile
     }
   } catch {
     return file
@@ -207,6 +188,7 @@ export default function Home() {
   const [tier, setTier] = useState<Tier>('fast')
   const [outputFormat, setOutputFormat] = useState<OutputFormat>('ig')
   const [inputMode, setInputMode] = useState<InputMode>('text')
+  const [activeSegmentIndex, setActiveSegmentIndex] = useState(0)
   const [fileName, setFileName] = useState('')
   const [previewUrl, setPreviewUrl] = useState('')
   const [imageUrl, setImageUrl] = useState('')
@@ -215,8 +197,8 @@ export default function Home() {
   const [uploadError, setUploadError] = useState('')
   const [segments, setSegments] = useState<SegmentState[]>(createFreshSegments)
   const [history, setHistory] = useState<HistoryItem[]>([])
-  const [characterLibrary, setCharacterLibrary] = useState<CharacterProfile[]>([])
-  const [selectedCharacterId, setSelectedCharacterId] = useState('')
+  const [characterLibrary, setCharacterLibrary] = useState<CharacterProfile[]>([BUILT_IN_CHARACTER])
+  const [selectedCharacterId, setSelectedCharacterId] = useState(BUILT_IN_CHARACTER.id)
   const [characterName, setCharacterName] = useState('Eggy')
   const [characterPromptLock, setCharacterPromptLock] = useState(DEFAULT_CHARACTER_PROMPT_LOCK)
   const [characterUploading, setCharacterUploading] = useState(false)
@@ -244,10 +226,7 @@ export default function Home() {
         const parsed = JSON.parse(savedCharacters) as CharacterProfile[]
         const nextLibrary = parsed.length > 0 ? parsed : [BUILT_IN_CHARACTER]
         setCharacterLibrary(nextLibrary)
-        if (nextLibrary[0]) setSelectedCharacterId(nextLibrary[0].id)
-      } else {
-        setCharacterLibrary([BUILT_IN_CHARACTER])
-        setSelectedCharacterId(BUILT_IN_CHARACTER.id)
+        setSelectedCharacterId(nextLibrary[0]?.id ?? BUILT_IN_CHARACTER.id)
       }
     } catch {
       setCharacterLibrary([BUILT_IN_CHARACTER])
@@ -263,6 +242,29 @@ export default function Home() {
     }
   }, [])
 
+  const selectedCharacter = useMemo(
+    () => characterLibrary.find(character => character.id === selectedCharacterId) ?? characterLibrary[0],
+    [characterLibrary, selectedCharacterId]
+  )
+  const activeSegment = segments[activeSegmentIndex]
+  const latestVideoSegment = [...segments].reverse().find(segment => segment.videoUrl) ?? activeSegment
+  const currentFormat = OUTPUT_FORMATS[outputFormat]
+  const isBusy =
+    uploading ||
+    segments.some(segment =>
+      segment.referenceUploading || ['submitting', 'queued', 'generating'].includes(segment.status)
+    )
+  const canGenerateActive =
+    Boolean(activeSegment?.prompt.trim()) &&
+    (inputMode === 'text' ||
+      (inputMode === 'grid' && Boolean(imageUrl)) ||
+      (inputMode === 'reference' && activeSegment.referenceUrls.length > 0))
+  const canGenerateAll =
+    segments.every(segment => segment.prompt.trim()) &&
+    (inputMode === 'text' ||
+      (inputMode === 'grid' && Boolean(imageUrl)) ||
+      (inputMode === 'reference' && segments.every(segment => segment.referenceUrls.length > 0)))
+
   function updateSegment(index: number, patch: Partial<SegmentState>) {
     setSegments(current =>
       current.map((segment, segmentIndex) =>
@@ -276,174 +278,29 @@ export default function Home() {
     window.localStorage.setItem(CHARACTER_LIBRARY_KEY, JSON.stringify(nextLibrary))
   }
 
-  function getSelectedCharacter() {
-    return characterLibrary.find(character => character.id === selectedCharacterId) ?? characterLibrary[0]
-  }
-
   function mergeCharacterPrompt(prompt: string, character: CharacterProfile) {
     const markers = [`角色鎖定：${character.name}`, `Character Lock: ${character.name}`]
     if (markers.some(marker => prompt.includes(marker))) return prompt
-    return [prompt.trim(), character.promptLock.trim()].filter(Boolean).join('\n\n')
+    return [character.promptLock.trim(), prompt.trim()].filter(Boolean).join('\n\n')
   }
 
-  function applyCharacterToSegment(character: CharacterProfile, index: number) {
+  function applyCharacterToSegment(index: number) {
+    if (!selectedCharacter) return
     updateSegment(index, {
-      prompt: mergeCharacterPrompt(segments[index]?.prompt ?? '', character),
-      referenceUploading: false,
+      prompt: mergeCharacterPrompt(segments[index]?.prompt ?? '', selectedCharacter),
       error: '',
     })
   }
 
-  function applyCharacterToAll(character: CharacterProfile) {
+  function applyCharacterToAll() {
+    if (!selectedCharacter) return
     setSegments(current =>
       current.map(segment => ({
         ...segment,
-        prompt: mergeCharacterPrompt(segment.prompt, character),
-        referenceUploading: false,
+        prompt: mergeCharacterPrompt(segment.prompt, selectedCharacter),
         error: '',
       }))
     )
-  }
-
-  async function createCharacterFromFiles(files: FileList | null) {
-    const selectedFiles = Array.from(files ?? []).slice(0, MAX_CHARACTER_REFERENCES)
-    const trimmedName = characterName.trim() || '未命名角色'
-    const trimmedPrompt = characterPromptLock.trim()
-
-    if (selectedFiles.length === 0) {
-      setCharacterUploadError('請先選擇 1-9 張角色參考圖。')
-      return
-    }
-
-    if (!trimmedPrompt) {
-      setCharacterUploadError('請先填好角色鎖定提示。')
-      return
-    }
-
-    setCharacterUploading(true)
-    setCharacterUploadError('')
-
-    try {
-      const urls: string[] = []
-      const names: string[] = []
-      for (const file of selectedFiles) {
-        const { url } = await uploadFileToFal(file)
-        urls.push(url)
-        names.push(file.name)
-      }
-
-      const character: CharacterProfile = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        name: trimmedName,
-        promptLock: trimmedPrompt,
-        assetUrls: urls,
-        assetNames: names,
-        createdAt: new Date().toISOString(),
-      }
-      const nextLibrary = [character, ...characterLibrary].slice(0, 12)
-      persistCharacterLibrary(nextLibrary)
-      setSelectedCharacterId(character.id)
-      applyCharacterToAll(character)
-      setEditingCharacter(false)
-    } catch (error: unknown) {
-      setCharacterUploadError(error instanceof Error ? error.message : '角色參考圖上載失敗。')
-    } finally {
-      setCharacterUploading(false)
-    }
-  }
-
-  function deleteCharacter(characterId: string) {
-    const nextLibrary = characterLibrary.filter(character => character.id !== characterId)
-    persistCharacterLibrary(nextLibrary)
-    setSelectedCharacterId(nextLibrary[0]?.id ?? '')
-  }
-
-  function editSelectedCharacter(character: CharacterProfile) {
-    setCharacterName(character.name)
-    setCharacterPromptLock(character.promptLock)
-    setCharacterUploadError('')
-    setEditingCharacter(true)
-  }
-
-  function saveCompletedSegment(index: number, videoUrl: string, requestId: string, endpointId: string) {
-    const currentSegment = segments[index]
-    if (!currentSegment) return
-
-    const segmentRecord: HistorySegment = {
-      label: currentSegment.label,
-      prompt: currentSegment.prompt,
-      videoUrl,
-      requestId,
-      endpointId,
-    }
-
-    setHistory(currentHistory => {
-      const existingRun = currentHistory.find(
-        item =>
-          item.imageUrl === imageUrl &&
-          item.fileName === fileName &&
-          item.tier === tier &&
-          (item.outputFormat ?? 'ig') === outputFormat &&
-          (item.inputMode ?? 'grid') === inputMode
-      )
-      const nextRun: HistoryItem = existingRun
-        ? {
-            ...existingRun,
-            createdAt: new Date().toISOString(),
-            segments: [
-              ...existingRun.segments.filter(segment => segment.label !== segmentRecord.label),
-              segmentRecord,
-            ],
-          }
-        : {
-            id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-            createdAt: new Date().toISOString(),
-            tier,
-            outputFormat,
-            inputMode,
-            fileName:
-              fileName ||
-              (inputMode === 'text' ? '純文字生成' : inputMode === 'reference' ? '參考素材' : '分鏡圖'),
-            imageUrl,
-            segments: [segmentRecord],
-          }
-
-      const withoutExisting = currentHistory.filter(item => item.id !== nextRun.id)
-      const nextHistory = [nextRun, ...withoutExisting].slice(0, MAX_HISTORY)
-      window.localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory))
-      return nextHistory
-    })
-  }
-
-  function restoreHistory(item: HistoryItem) {
-    setTier(item.tier)
-    setOutputFormat(item.outputFormat ?? 'ig')
-    setInputMode(item.inputMode ?? 'grid')
-    setFileName(item.fileName)
-    setImageUrl(item.imageUrl)
-    setPreviewUrl('')
-    setUploadError('')
-    setGlobalError('')
-    setSegments(
-      createFreshSegments().map(segment => {
-        const saved = item.segments.find(historySegment => historySegment.label === segment.label)
-        return saved
-          ? {
-              ...segment,
-              prompt: saved.prompt,
-              requestId: saved.requestId,
-              endpointId: saved.endpointId,
-              status: 'completed',
-              videoUrl: saved.videoUrl,
-            }
-          : segment
-      })
-    )
-  }
-
-  function clearHistory() {
-    window.localStorage.removeItem(HISTORY_KEY)
-    setHistory([])
   }
 
   async function uploadFileToFal(file: File) {
@@ -457,10 +314,7 @@ export default function Home() {
     })
     const data = await response.json()
 
-    if (!response.ok || data.error) {
-      throw new Error(data.error || '上載失敗。')
-    }
-
+    if (!response.ok || data.error) throw new Error(data.error || '上載失敗。')
     return { url: data.url as string, uploadedFile: uploadFile }
   }
 
@@ -473,7 +327,6 @@ export default function Home() {
     setImageUrl('')
     setFileName(file.name)
     setUploadSizeLabel(formatBytes(file.size))
-    setSegments(createFreshSegments())
 
     if (previewObjectUrl.current) URL.revokeObjectURL(previewObjectUrl.current)
     const localPreviewUrl = URL.createObjectURL(file)
@@ -493,6 +346,7 @@ export default function Home() {
       setUploadError(error instanceof Error ? error.message : '上載失敗。')
     } finally {
       setUploading(false)
+      event.target.value = ''
     }
   }
 
@@ -500,15 +354,17 @@ export default function Home() {
     const selectedFiles = Array.from(files ?? []).slice(0, 9)
     if (selectedFiles.length === 0) return
 
+    const previews = selectedFiles.map(file => {
+      const url = URL.createObjectURL(file)
+      referenceObjectUrls.current.push(url)
+      return url
+    })
+
     updateSegment(index, {
       referenceUploading: true,
       referenceUrls: [],
       referenceNames: selectedFiles.map(file => file.name),
-      referencePreviews: selectedFiles.map(file => {
-        const url = URL.createObjectURL(file)
-        referenceObjectUrls.current.push(url)
-        return url
-      }),
+      referencePreviews: previews,
       error: '',
     })
 
@@ -532,24 +388,121 @@ export default function Home() {
     }
   }
 
+  async function createCharacterFromFiles(files: FileList | null) {
+    const selectedFiles = Array.from(files ?? []).slice(0, MAX_CHARACTER_REFERENCES)
+    const trimmedName = characterName.trim() || '未命名角色'
+    const trimmedPrompt = characterPromptLock.trim()
+
+    if (!trimmedPrompt) {
+      setCharacterUploadError('請先填寫角色描述。')
+      return
+    }
+
+    setCharacterUploading(true)
+    setCharacterUploadError('')
+
+    try {
+      const urls: string[] = []
+      const names: string[] = []
+      for (const file of selectedFiles) {
+        const { url } = await uploadFileToFal(file)
+        urls.push(url)
+        names.push(file.name)
+      }
+
+      const character: CharacterProfile = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        name: trimmedName,
+        promptLock: trimmedPrompt,
+        assetUrls: urls,
+        assetNames: names,
+        createdAt: new Date().toISOString(),
+      }
+      const nextLibrary = [character, ...characterLibrary.filter(item => item.name !== trimmedName)].slice(0, 12)
+      persistCharacterLibrary(nextLibrary)
+      setSelectedCharacterId(character.id)
+      setEditingCharacter(false)
+    } catch (error: unknown) {
+      setCharacterUploadError(error instanceof Error ? error.message : '角色儲存失敗。')
+    } finally {
+      setCharacterUploading(false)
+    }
+  }
+
+  function deleteCharacter(characterId: string) {
+    const nextLibrary = characterLibrary.filter(character => character.id !== characterId)
+    persistCharacterLibrary(nextLibrary.length > 0 ? nextLibrary : [BUILT_IN_CHARACTER])
+    setSelectedCharacterId(nextLibrary[0]?.id ?? BUILT_IN_CHARACTER.id)
+  }
+
+  function saveCompletedSegment(index: number, videoUrl: string, requestId: string, endpointId: string) {
+    const currentSegment = segments[index]
+    if (!currentSegment) return
+
+    const segmentRecord: HistorySegment = {
+      label: currentSegment.label,
+      prompt: currentSegment.prompt,
+      videoUrl,
+      requestId,
+      endpointId,
+    }
+
+    setHistory(currentHistory => {
+      const nextRun: HistoryItem = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        createdAt: new Date().toISOString(),
+        tier,
+        outputFormat,
+        inputMode,
+        fileName:
+          fileName ||
+          (inputMode === 'text' ? '純文字生成' : inputMode === 'reference' ? '多圖參考' : '單張分鏡圖'),
+        imageUrl,
+        segments: [segmentRecord],
+      }
+      const nextHistory = [nextRun, ...currentHistory].slice(0, MAX_HISTORY)
+      window.localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory))
+      return nextHistory
+    })
+  }
+
+  function restoreHistory(item: HistoryItem) {
+    setTier(item.tier)
+    setOutputFormat(item.outputFormat ?? 'ig')
+    setInputMode(item.inputMode ?? 'text')
+    setFileName(item.fileName)
+    setImageUrl(item.imageUrl)
+    setPreviewUrl('')
+    setUploadError('')
+    setGlobalError('')
+    setActiveSegmentIndex(0)
+    setSegments(
+      createFreshSegments().map(segment => {
+        const saved = item.segments.find(historySegment => historySegment.label === segment.label)
+        return saved
+          ? {
+              ...segment,
+              prompt: saved.prompt,
+              requestId: saved.requestId,
+              endpointId: saved.endpointId,
+              status: 'completed',
+              videoUrl: saved.videoUrl,
+            }
+          : segment
+      })
+    )
+  }
+
   async function submitSegment(index: number) {
     const segment = segments[index]
-
-    if (!segment.prompt.trim()) {
-      throw new Error(`請先填寫 ${segment.label} 的 prompt。`)
-    }
-
-    if (inputMode === 'grid' && !imageUrl) {
-      throw new Error('請先上載分鏡圖。')
-    }
-
+    if (!segment.prompt.trim()) throw new Error(`請先填寫 ${segment.label} 的 prompt。`)
+    if (inputMode === 'grid' && !imageUrl) throw new Error('請先上載一張分鏡圖。')
     if (inputMode === 'reference' && segment.referenceUrls.length === 0) {
       throw new Error(`請先上載 ${segment.label} 的參考圖。`)
     }
 
     const finalPrompt = buildSeedancePrompt(
       segment.prompt,
-      index,
       inputMode,
       inputMode === 'reference' ? segment.referenceUrls.length : 0
     )
@@ -576,21 +529,19 @@ export default function Home() {
     })
     const data = await response.json()
 
-    if (!response.ok || data.error) {
-      throw new Error(data.error || '提交生成失敗。')
-    }
+    if (!response.ok || data.error) throw new Error(data.error || '提交生成失敗。')
 
     updateSegment(index, {
       requestId: data.requestId,
       endpointId: data.endpointId,
       status: 'queued',
     })
-
-    pollSegment(index, data.requestId, data.endpointId)
+    void pollSegment(index, data.requestId, data.endpointId)
   }
 
   async function generateSingleSegment(index: number) {
     setGlobalError('')
+    setActiveSegmentIndex(index)
     try {
       await submitSegment(index)
     } catch (error: unknown) {
@@ -621,9 +572,7 @@ export default function Home() {
       })
       const data = await response.json()
 
-      if (!response.ok || data.error) {
-        throw new Error(data.error || '檢查生成狀態失敗。')
-      }
+      if (!response.ok || data.error) throw new Error(data.error || '檢查生成狀態失敗。')
 
       if (data.status === 'COMPLETED') {
         updateSegment(index, {
@@ -640,7 +589,7 @@ export default function Home() {
       })
 
       pollingTimers.current[index] = setTimeout(() => {
-        pollSegment(index, requestId, endpointId)
+        void pollSegment(index, requestId, endpointId)
       }, 8000)
     } catch (error: unknown) {
       updateSegment(index, {
@@ -650,345 +599,200 @@ export default function Home() {
     }
   }
 
-  const isBusy =
-    uploading ||
-    segments.some(segment =>
-      segment.referenceUploading || ['submitting', 'queued', 'generating'].includes(segment.status)
-    )
-  const canGenerate =
-    inputMode === 'text'
-      ? segments.every(segment => segment.prompt.trim())
-      : inputMode === 'grid'
-      ? Boolean(imageUrl)
-      : segments.every(segment => segment.referenceUrls.length > 0)
-  const currentFormat = OUTPUT_FORMATS[outputFormat]
-  const selectedCharacter = getSelectedCharacter()
-
   return (
-    <main className="min-h-screen bg-[#0a0a0a] text-[#e8e8e8]">
-      <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-5 py-8">
-        <header className="border-b border-[#222] pb-6">
-          <div className="text-xs font-bold uppercase tracking-[0.3em] text-[#777]">
-            SOON 影片生成
-          </div>
-          <h1 className="mt-3 text-3xl font-bold tracking-tight">
-            影片生成（Seedance 2.0）
-          </h1>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-[#aaa]">
-            上載分鏡圖或每段參考素材，兩段分別送去 Seedance。固定輸出 {currentFormat.aspectRatio}、720p，並保留 Seedance 自帶環境聲。
-          </p>
-        </header>
-
-        <section className="mt-6 rounded-2xl border border-[#222] bg-[#111] p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-bold">最近紀錄</h2>
-              <p className="mt-1 text-xs text-[#777]">
-                完成生成後會自動保留最近 {MAX_HISTORY} 次紀錄，下載連結可由呢度載入。
-              </p>
-            </div>
-            {history.length > 0 && (
-              <button
-                type="button"
-                onClick={clearHistory}
-                className="rounded-lg border border-[#333] px-3 py-2 text-xs font-bold text-[#aaa] transition hover:border-red-400 hover:text-red-200"
-              >
-                清除紀錄
-              </button>
-            )}
-          </div>
-
-          {history.length === 0 ? (
-            <div className="mt-4 rounded-xl border border-dashed border-[#333] bg-[#0c0c0c] px-4 py-5 text-sm text-[#888]">
-              暫時未有紀錄。下一次影片完成後，下載連結會出現在這裡。
-            </div>
-          ) : (
-            <div className="mt-4 grid gap-3">
-              {history.map(item => (
-                <article key={item.id} className="rounded-xl border border-[#252525] bg-[#0c0c0c] p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="font-bold">{item.fileName}</div>
-                      <div className="mt-1 text-xs text-[#777]">
-                        {formatDateTime(item.createdAt)} · {OUTPUT_FORMATS[item.outputFormat ?? 'ig'].label} {OUTPUT_FORMATS[item.outputFormat ?? 'ig'].aspectRatio} · {item.tier === 'fast' ? '快速' : '標準'} · {item.segments.length} 段
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => restoreHistory(item)}
-                      className="rounded-lg border border-[#333] px-3 py-2 text-xs font-bold transition hover:border-[#e8d5b0] hover:text-[#e8d5b0]"
-                    >
-                      載入
-                    </button>
+    <main className="min-h-screen bg-[#0a0b0d] text-[#f4f4f5]">
+      <div className="grid min-h-screen lg:grid-cols-[440px_minmax(0,1fr)]">
+        <aside className="border-r border-[#24262d] bg-[#111216]">
+          <div className="sticky top-0 max-h-screen overflow-y-auto px-4 py-5">
+            <div className="rounded-2xl border border-[#2a2430] bg-[#17151d] p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#20293a] text-lg font-black text-[#8fb7ff]">
+                  S
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-lg font-bold">Seedance 2.0</h1>
+                    <span className="rounded-full bg-[#ff3f68] px-2 py-0.5 text-[10px] font-bold text-white">SOON</span>
                   </div>
-
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {item.segments.map(segment => (
-                      <a
-                        key={`${item.id}-${segment.label}`}
-                        href={segment.videoUrl}
-                        download={`${segment.label.toLowerCase().replace(' ', '-')}.mp4`}
-                        className="rounded-lg bg-[#e8d5b0] px-3 py-2 text-xs font-bold text-[#0a0a0a] transition hover:opacity-90"
-                      >
-                        下載 {segment.label}
-                      </a>
-                    ))}
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="mt-6 grid gap-5 lg:grid-cols-[1fr_1.2fr]">
-          <div className="rounded-2xl border border-[#222] bg-[#111] p-5">
-            <h2 className="text-base font-bold">設定</h2>
-
-            <div className="mt-5">
-              <div className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-[#777]">
-                輸出格式
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                {(Object.keys(OUTPUT_FORMATS) as OutputFormat[]).map(format => {
-                  const option = OUTPUT_FORMATS[format]
-                  const active = outputFormat === format
-                  return (
-                    <button
-                      key={format}
-                      type="button"
-                      onClick={() => setOutputFormat(format)}
-                      className={`rounded-xl border p-4 text-left transition ${
-                        active
-                          ? 'border-[#7c5cfc] bg-[#7c5cfc]/20'
-                          : 'border-[#2a2a2a] bg-[#0c0c0c] hover:border-[#555]'
-                      }`}
-                    >
-                      <div className="font-bold">{option.label}</div>
-                      <div className="mt-1 text-xs text-[#aaa]">{option.aspectRatio}</div>
-                      <div className="mt-1 text-xs text-[#777]">{option.note}</div>
-                    </button>
-                  )
-                })}
+                  <p className="mt-1 text-xs text-[#989aa3]">多模式輸入，角色庫與短片生成工作台</p>
+                </div>
               </div>
             </div>
 
-            <div className="mt-5">
-              <div className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-[#777]">
-                生成速度
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                {(['fast', 'standard'] as Tier[]).map(option => (
+            <section className="mt-5">
+              <div className="mb-2 text-xs font-bold text-[#a5a7b2]">建立方式</div>
+              <div className="grid grid-cols-3 rounded-xl border border-[#2a2c33] bg-[#1a1b20] p-1">
+                {[
+                  { id: 'text', label: '文字' },
+                  { id: 'grid', label: '圖片' },
+                  { id: 'reference', label: '媒體' },
+                ].map(item => (
                   <button
-                    key={option}
+                    key={item.id}
                     type="button"
-                    onClick={() => setTier(option)}
-                    className={`rounded-xl border p-4 text-left transition ${
-                      tier === option
-                        ? 'border-[#e8d5b0] bg-[#e8d5b0]/10'
-                        : 'border-[#2a2a2a] bg-[#0c0c0c] hover:border-[#555]'
+                    onClick={() => setInputMode(item.id as InputMode)}
+                    className={`rounded-lg px-3 py-2 text-sm font-bold transition ${
+                      inputMode === item.id
+                        ? 'bg-gradient-to-r from-[#8b5cf6] to-[#f04da1] text-white'
+                        : 'text-[#9da0aa] hover:text-white'
                     }`}
                   >
-                    <div className="font-bold">{option === 'fast' ? '快速' : '標準'}</div>
-                    <div className="mt-1 text-xs text-[#aaa]">
-                      約 US${option === 'fast' ? '0.24' : '0.30'} / 秒
-                    </div>
+                    {item.label}
                   </button>
                 ))}
               </div>
-            </div>
+            </section>
 
-            <div className="mt-5">
-              <div className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-[#777]">
-                輸入模式
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <button
-                  type="button"
-                  onClick={() => setInputMode('text')}
-                  className={`rounded-xl border p-4 text-left transition ${
-                    inputMode === 'text'
-                      ? 'border-[#e8d5b0] bg-[#e8d5b0]/10'
-                      : 'border-[#2a2a2a] bg-[#0c0c0c] hover:border-[#555]'
-                  }`}
-                >
-                  <div className="font-bold">純文字</div>
-                  <div className="mt-1 text-xs text-[#aaa]">只輸入 prompt，不用上載圖片</div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setInputMode('grid')}
-                  className={`rounded-xl border p-4 text-left transition ${
-                    inputMode === 'grid'
-                      ? 'border-[#e8d5b0] bg-[#e8d5b0]/10'
-                      : 'border-[#2a2a2a] bg-[#0c0c0c] hover:border-[#555]'
-                  }`}
-                >
-                  <div className="font-bold">單張分鏡圖</div>
-                  <div className="mt-1 text-xs text-[#aaa]">上載一張 15 格參考圖</div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setInputMode('reference')}
-                  className={`rounded-xl border p-4 text-left transition ${
-                    inputMode === 'reference'
-                      ? 'border-[#e8d5b0] bg-[#e8d5b0]/10'
-                      : 'border-[#2a2a2a] bg-[#0c0c0c] hover:border-[#555]'
-                  }`}
-                >
-                  <div className="font-bold">多圖參考</div>
-                  <div className="mt-1 text-xs text-[#aaa]">每段最多 9 張，建議 1-8 / 8-15</div>
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-5 rounded-2xl border border-[#252525] bg-[#0c0c0c] p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-bold">角色庫</div>
-                  <div className="mt-1 text-xs text-[#777]">
-                    先把角色參考圖上載到 fal.ai，之後可重複套用到 Seedance 多圖參考影片。
-                  </div>
-                </div>
-                {selectedCharacter && (
-                  <button
-                    type="button"
-                    onClick={() => applyCharacterToAll(selectedCharacter)}
-                    className="rounded-lg bg-[#7c5cfc] px-3 py-2 text-xs font-bold text-white transition hover:opacity-90"
-                  >
-                    套用文字到全部
-                  </button>
-                )}
-              </div>
-
-              {characterLibrary.length > 0 && (
-                <div className="mt-4 space-y-3">
-                  <select
-                    value={selectedCharacterId}
-                    onChange={event => setSelectedCharacterId(event.target.value)}
-                    className="w-full rounded-lg border border-[#333] bg-black px-3 py-2 text-sm outline-none transition focus:border-[#e8d5b0]"
-                  >
-                    {characterLibrary.map(character => (
-                      <option key={character.id} value={character.id}>
-                        {character.name}（{character.assetUrls.length} 張參考圖）
-                      </option>
-                    ))}
-                  </select>
-
-                  {selectedCharacter && (
-                    <div className="rounded-xl border border-[#222] bg-black/40 p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <div className="text-sm font-bold">{selectedCharacter.name}</div>
-                          <div className="mt-1 text-xs text-[#777]">
-                            {selectedCharacter.assetUrls.length > 0
-                              ? `${selectedCharacter.assetUrls.length} 張角色參考圖，會留在角色庫作身份設定；套用時只會加入角色鎖定文字。`
-                              : '未有參考圖；套用時會先把角色鎖定文字加入 prompt。'}
-                          </div>
-                        </div>
-                        {selectedCharacter.id !== BUILT_IN_CHARACTER.id && (
-                          <button
-                            type="button"
-                            onClick={() => deleteCharacter(selectedCharacter.id)}
-                            className="rounded-lg border border-red-500/30 px-3 py-2 text-xs font-bold text-red-200 transition hover:bg-red-500/10"
-                          >
-                            刪除
-                          </button>
-                        )}
-                      </div>
-
-                      {selectedCharacter.assetUrls.length > 0 && (
-                        <div className="mt-3 grid grid-cols-3 gap-2">
-                          {selectedCharacter.assetUrls.slice(0, 6).map((url, imageIndex) => (
-                            <img
-                              key={`${selectedCharacter.id}-${url}`}
-                              src={url}
-                              alt={`${selectedCharacter.name} 參考圖 ${imageIndex + 1}`}
-                              className="h-20 w-full rounded-lg border border-[#222] object-cover"
-                            />
-                          ))}
-                        </div>
-                      )}
-
-                      <div className="mt-3 grid grid-cols-3 gap-2">
-                        {segments.map((segment, index) => (
-                          <button
-                            key={`${selectedCharacter.id}-${segment.label}`}
-                            type="button"
-                            onClick={() => applyCharacterToSegment(selectedCharacter, index)}
-                            className="rounded-lg border border-[#333] px-3 py-2 text-xs font-bold transition hover:border-[#e8d5b0] hover:text-[#e8d5b0]"
-                          >
-                            套用文字到第 {index + 1} 段
-                          </button>
-                        ))}
-                        <button
-                          type="button"
-                          onClick={() => applyCharacterToAll(selectedCharacter)}
-                          className="rounded-lg border border-[#7c5cfc] px-3 py-2 text-xs font-bold text-[#b8a8ff] transition hover:bg-[#7c5cfc]/10"
-                        >
-                          套用文字到全部
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="mt-4 border-t border-[#222] pt-4">
-                <div className="flex flex-wrap gap-2">
-                  {selectedCharacter && (
+            {inputMode === 'grid' && (
+              <section className="mt-5">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-sm font-bold">分鏡圖</div>
+                  {fileName && (
                     <button
                       type="button"
-                      onClick={() => editSelectedCharacter(selectedCharacter)}
-                      className="rounded-lg border border-[#333] px-3 py-2 text-xs font-bold transition hover:border-[#e8d5b0] hover:text-[#e8d5b0]"
+                      onClick={() => {
+                        setFileName('')
+                        setImageUrl('')
+                        setPreviewUrl('')
+                      }}
+                      className="text-xs font-bold text-[#ff657d]"
                     >
-                      編輯角色
+                      清除
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCharacterName('')
-                      setCharacterPromptLock(DEFAULT_CHARACTER_PROMPT_LOCK)
-                      setCharacterUploadError('')
-                      setEditingCharacter(true)
-                    }}
-                    className="rounded-lg border border-[#333] px-3 py-2 text-xs font-bold transition hover:border-[#e8d5b0] hover:text-[#e8d5b0]"
-                  >
-                    新增角色
-                  </button>
                 </div>
+                <label className="block cursor-pointer rounded-xl border border-[#30323a] bg-[#1b1c21] p-3 transition hover:border-[#8b5cf6]">
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                  {previewUrl ? (
+                    <img src={previewUrl} alt="分鏡圖預覽" className="h-28 w-28 rounded-lg object-cover" />
+                  ) : (
+                    <div className="flex h-28 items-center justify-center rounded-lg border border-dashed border-[#3b3d45] text-sm text-[#a5a7b2]">
+                      拖放或點擊上載
+                    </div>
+                  )}
+                </label>
+                <div className="mt-2 text-xs text-[#7f828c]">
+                  {uploading ? '正在上載...' : imageUrl ? '上載完成，可以生成。' : '支援 JPG / PNG / WebP'}
+                  {uploadSizeLabel && ` · ${uploadSizeLabel}`}
+                </div>
+                {uploadError && (
+                  <div className="mt-2 whitespace-pre-wrap rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
+                    {uploadError}
+                  </div>
+                )}
+              </section>
+            )}
 
-                {editingCharacter && (
-                  <div className="mt-4 space-y-3 rounded-xl border border-[#222] bg-black/30 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <div className="text-xs font-bold text-[#888]">建立／編輯角色</div>
-                        <div className="mt-1 text-xs leading-5 text-[#666]">
-                          平時只需要在上面揀角色再套用；只有建立新角色，或想補充角色參考圖時，先進入這裡。
-                        </div>
+            <section className="mt-5">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-sm font-bold">角色庫</div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCharacterName('')
+                    setCharacterPromptLock(DEFAULT_CHARACTER_PROMPT_LOCK)
+                    setCharacterUploadError('')
+                    setEditingCharacter(true)
+                  }}
+                  className="rounded-lg border border-[#343741] px-3 py-1.5 text-xs font-bold text-[#d6d7dc] transition hover:border-[#8b5cf6]"
+                >
+                  新增
+                </button>
+              </div>
+              <div className="rounded-2xl border border-[#2a2c33] bg-[#15161a] p-3">
+                <select
+                  value={selectedCharacterId}
+                  onChange={event => setSelectedCharacterId(event.target.value)}
+                  className="w-full rounded-lg border border-[#343741] bg-black px-3 py-2 text-sm outline-none focus:border-[#8b5cf6]"
+                >
+                  {characterLibrary.map(character => (
+                    <option key={character.id} value={character.id}>
+                      {character.name}（{character.assetUrls.length} 張參考圖）
+                    </option>
+                  ))}
+                </select>
+
+                {selectedCharacter && (
+                  <div className="mt-3">
+                    {selectedCharacter.assetUrls.length > 0 ? (
+                      <div className="grid grid-cols-4 gap-2">
+                        {selectedCharacter.assetUrls.slice(0, 8).map((url, index) => (
+                          <img
+                            key={`${selectedCharacter.id}-${url}`}
+                            src={url}
+                            alt={`${selectedCharacter.name} 參考圖 ${index + 1}`}
+                            className="h-16 rounded-lg border border-[#2d3038] object-cover"
+                          />
+                        ))}
                       </div>
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-[#32343c] px-3 py-3 text-xs leading-5 text-[#8d9099]">
+                        目前用文字鎖定角色。需要更穩定外形時，可以新增角色參考圖。
+                      </div>
+                    )}
+                    <div className="mt-3 grid grid-cols-2 gap-2">
                       <button
                         type="button"
-                        onClick={() => setEditingCharacter(false)}
-                        className="rounded-lg border border-[#333] px-3 py-2 text-xs font-bold transition hover:border-[#e8d5b0] hover:text-[#e8d5b0]"
+                        onClick={() => applyCharacterToSegment(activeSegmentIndex)}
+                        className="rounded-lg bg-[#7c5cff] px-3 py-2 text-xs font-bold text-white transition hover:opacity-90"
                       >
-                        收起
+                        套用到目前段落
+                      </button>
+                      <button
+                        type="button"
+                        onClick={applyCharacterToAll}
+                        className="rounded-lg border border-[#7c5cff] px-3 py-2 text-xs font-bold text-[#c8bdff] transition hover:bg-[#7c5cff]/10"
+                      >
+                        套用到全部
                       </button>
                     </div>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCharacterName(selectedCharacter.name)
+                          setCharacterPromptLock(selectedCharacter.promptLock)
+                          setCharacterUploadError('')
+                          setEditingCharacter(true)
+                        }}
+                        className="rounded-lg border border-[#343741] px-3 py-2 text-xs font-bold text-[#d6d7dc]"
+                      >
+                        編輯角色
+                      </button>
+                      {selectedCharacter.id !== BUILT_IN_CHARACTER.id && (
+                        <button
+                          type="button"
+                          onClick={() => deleteCharacter(selectedCharacter.id)}
+                          className="rounded-lg border border-red-500/30 px-3 py-2 text-xs font-bold text-red-200"
+                        >
+                          刪除
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {editingCharacter && (
+                  <div className="mt-4 space-y-3 border-t border-[#282a31] pt-4">
                     <input
                       value={characterName}
                       onChange={event => setCharacterName(event.target.value)}
                       placeholder="角色名稱"
-                      className="w-full rounded-lg border border-[#333] bg-black px-3 py-2 text-sm outline-none transition placeholder:text-[#555] focus:border-[#e8d5b0]"
+                      className="w-full rounded-lg border border-[#343741] bg-black px-3 py-2 text-sm outline-none focus:border-[#8b5cf6]"
                     />
                     <textarea
                       value={characterPromptLock}
                       onChange={event => setCharacterPromptLock(event.target.value)}
-                      rows={5}
-                      className="w-full resize-y rounded-lg border border-[#333] bg-black px-3 py-2 text-xs leading-5 outline-none transition placeholder:text-[#555] focus:border-[#e8d5b0]"
+                      rows={6}
+                      className="w-full resize-y rounded-lg border border-[#343741] bg-black px-3 py-2 text-xs leading-5 outline-none focus:border-[#8b5cf6]"
                     />
-                    <label className="flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-[#333] bg-black px-4 py-4 text-center text-xs font-bold transition hover:border-[#e8d5b0] hover:text-[#e8d5b0]">
-                      {characterUploading ? '上載角色中...' : '上載並儲存角色參考圖（1-9 張）'}
+                    <label className="flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-[#343741] bg-black px-4 py-4 text-center text-xs font-bold transition hover:border-[#8b5cf6]">
+                      {characterUploading ? '正在儲存角色...' : '上載並儲存角色參考圖（可選，1-9 張）'}
                       <input
                         type="file"
                         multiple
@@ -997,191 +801,396 @@ export default function Home() {
                         className="hidden"
                       />
                     </label>
+                    <button
+                      type="button"
+                      onClick={() => void createCharacterFromFiles(null)}
+                      disabled={characterUploading}
+                      className="w-full rounded-lg border border-[#343741] px-3 py-2 text-xs font-bold text-[#d6d7dc] disabled:opacity-40"
+                    >
+                      只儲存文字角色
+                    </button>
                     {characterUploadError && (
-                      <div className="whitespace-pre-wrap rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                      <div className="whitespace-pre-wrap rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
                         {characterUploadError}
                       </div>
                     )}
                   </div>
                 )}
               </div>
-            </div>
+            </section>
 
-            {inputMode === 'grid' && (
-              <div className="mt-6">
-                <div className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-[#777]">
-                  分鏡圖
+            <section className="mt-5">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-sm font-bold">提示詞</div>
+                <div className="flex rounded-lg border border-[#2a2c33] bg-black p-1">
+                  {segments.map((segment, index) => (
+                    <button
+                      key={segment.label}
+                      type="button"
+                      onClick={() => setActiveSegmentIndex(index)}
+                      className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${
+                        activeSegmentIndex === index ? 'bg-[#2f3544] text-white' : 'text-[#8d9099]'
+                      }`}
+                    >
+                      {segment.label}
+                    </button>
+                  ))}
                 </div>
-                <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-[#333] bg-[#0c0c0c] px-4 py-8 text-center transition hover:border-[#e8d5b0]">
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={handleFileChange}
-                    className="hidden"
-                  />
-                  <span className="text-sm font-bold">上載 15 格分鏡圖</span>
-                  <span className="mt-2 text-xs text-[#777]">JPEG / PNG / WebP，最多 30MB</span>
-                </label>
+              </div>
+              <textarea
+                value={activeSegment.prompt}
+                onChange={event => updateSegment(activeSegmentIndex, { prompt: event.target.value })}
+                rows={8}
+                className="w-full resize-y rounded-xl border border-[#30323a] bg-[#111216] px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-[#555] focus:border-[#8b5cf6]"
+                placeholder="描述角色、動作、場景、鏡頭、情緒..."
+              />
+              <div className="mt-2 flex items-center justify-between text-xs text-[#7f828c]">
+                <span>{activeSegment.prompt.length}/10000</span>
+                <button
+                  type="button"
+                  onClick={() => applyCharacterToSegment(activeSegmentIndex)}
+                  className="font-bold text-[#b59cff]"
+                >
+                  插入角色設定
+                </button>
+              </div>
+            </section>
 
-                {fileName && (
-                  <div className="mt-4 rounded-xl border border-[#252525] bg-[#0c0c0c] p-3">
-                    {previewUrl && (
-                      <img
-                        src={previewUrl}
-                      alt="分鏡圖預覽"
-                        className="mb-3 max-h-72 w-full rounded-lg object-contain"
-                      />
-                    )}
-                    <div className="text-sm font-semibold">{fileName}</div>
-                    <div className="mt-1 text-xs text-[#777]">
-                      {uploading ? '正在上載...' : imageUrl ? '上載完成，可以生成。' : '等待上載完成'}
-                    </div>
-                    {uploadSizeLabel && (
-                      <div className="mt-1 text-xs text-[#666]">上載大小：{uploadSizeLabel}</div>
-                    )}
+            {inputMode === 'reference' && (
+              <section className="mt-5 rounded-2xl border border-[#2a2c33] bg-[#15161a] p-3">
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-bold">{activeSegment.label} 參考素材</div>
+                    <div className="mt-1 text-xs text-[#858894]">最多 9 張，會作為 Seedance 多圖參考。</div>
+                  </div>
+                  <label className="cursor-pointer rounded-lg border border-[#343741] px-3 py-2 text-xs font-bold transition hover:border-[#8b5cf6]">
+                    選擇圖片
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={event => void uploadReferenceFiles(activeSegmentIndex, event.target.files)}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+                {activeSegment.referencePreviews.length > 0 ? (
+                  <div className="grid grid-cols-4 gap-2">
+                    {activeSegment.referencePreviews.map((url, index) => (
+                      <div key={`${activeSegment.label}-${url}`} className="rounded-lg border border-[#2d3038] bg-black/40 p-1">
+                        <img src={url} alt={`參考圖 ${index + 1}`} className="h-16 w-full rounded object-cover" />
+                        <div className="mt-1 truncate text-[10px] text-[#858894]">@Image{index + 1}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-[#343741] px-3 py-6 text-center text-xs text-[#858894]">
+                    未上載參考素材
                   </div>
                 )}
-
-                {uploadError && (
-                  <div className="mt-3 whitespace-pre-wrap rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
-                    {uploadError}
-                  </div>
-                )}
-              </div>
+                <div className="mt-2 text-xs text-[#858894]">
+                  {activeSegment.referenceUploading
+                    ? '參考圖上載中...'
+                    : `${activeSegment.referenceUrls.length} 張參考圖已就緒`}
+                </div>
+              </section>
             )}
 
-            <button
-              type="button"
-              onClick={generateBothSegments}
-              disabled={!canGenerate || uploading || isBusy}
-              className="mt-6 w-full rounded-xl bg-[#e8d5b0] px-4 py-4 text-sm font-bold text-[#0a0a0a] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              生成兩段
-            </button>
-
-            {globalError && (
-              <div className="mt-3 whitespace-pre-wrap rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
-                {globalError}
+            <section className="mt-5">
+              <div className="grid grid-cols-2 gap-3">
+                {(['fast', 'standard'] as Tier[]).map(option => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setTier(option)}
+                    className={`rounded-xl border p-4 text-left transition ${
+                      tier === option
+                        ? 'border-[#d7c58a] bg-[#2b2617]'
+                        : 'border-[#2d3038] bg-[#15161a] hover:border-[#555b6a]'
+                    }`}
+                  >
+                    <div className="font-bold">{option === 'fast' ? '快速' : '標準'}</div>
+                    <div className="mt-1 text-xs text-[#a5a7b2]">約 US${option === 'fast' ? '0.24' : '0.30'} / 秒</div>
+                  </button>
+                ))}
               </div>
-            )}
+
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                {(Object.keys(OUTPUT_FORMATS) as OutputFormat[]).map(format => {
+                  const option = OUTPUT_FORMATS[format]
+                  return (
+                    <button
+                      key={format}
+                      type="button"
+                      onClick={() => setOutputFormat(format)}
+                      className={`rounded-xl border p-4 text-left transition ${
+                        outputFormat === format
+                          ? 'border-[#4fd1a1] bg-[#123429]'
+                          : 'border-[#2d3038] bg-[#15161a] hover:border-[#555b6a]'
+                      }`}
+                    >
+                      <div className="font-bold">{option.aspectRatio}</div>
+                      <div className="mt-1 text-xs text-[#a5a7b2]">{option.label} · {option.note}</div>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="mt-4 rounded-xl border border-[#2d3038] bg-[#15161a] p-4">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-bold">時長</span>
+                  <span className="font-bold text-[#8fb7ff]">15 秒</span>
+                </div>
+                <div className="mt-3 h-2 rounded-full bg-[#2a2c33]">
+                  <div className="h-2 w-full rounded-full bg-[#4f8cff]" />
+                </div>
+                <div className="mt-4 flex items-center justify-between text-sm">
+                  <span className="font-bold">解析度</span>
+                  <span className="rounded-lg border border-[#4c3569] bg-[#24152d] px-3 py-1.5 font-bold text-[#d8b4fe]">
+                    720p
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void generateSingleSegment(activeSegmentIndex)}
+                disabled={!canGenerateActive || isBusy}
+                className="mt-4 w-full rounded-xl bg-gradient-to-r from-[#ffb21a] to-[#ff6b1a] px-4 py-4 text-sm font-black text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                生成目前段落
+              </button>
+              <button
+                type="button"
+                onClick={() => void generateBothSegments()}
+                disabled={!canGenerateAll || isBusy}
+                className="mt-3 w-full rounded-xl border border-[#343741] px-4 py-3 text-sm font-bold text-[#e8e8e8] transition hover:border-[#8b5cf6] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                生成兩段
+              </button>
+              {globalError && (
+                <div className="mt-3 whitespace-pre-wrap rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                  {globalError}
+                </div>
+              )}
+            </section>
+          </div>
+        </aside>
+
+        <section className="min-w-0 bg-[#0b0c0f]">
+          <div className="border-b border-[#24262d] bg-[#16130f] px-6 py-4">
+            <div className="text-sm font-bold text-[#ffd166]">溫馨提示</div>
+            <p className="mt-1 text-sm leading-6 text-[#f0c868]">
+              一般短片建議使用「標準」角色設定加「文字」模式開始；需要指定外形時，再加入角色參考圖或多圖參考素材。
+            </p>
           </div>
 
-          <div className="flex flex-col gap-5">
-            {segments.map((segment, index) => (
-              <section key={segment.label} className="rounded-2xl border border-[#222] bg-[#111] p-5">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-base font-bold">{segment.label}</h2>
-                    <div className="mt-1 text-xs text-[#777]">
-                      狀態：{STATUS_LABELS[segment.status]}
-                      {segment.requestId && ` · 請求 ${segment.requestId.slice(0, 8)}`}
-                    </div>
-                  </div>
+          <div className="px-6 py-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#24262d] pb-4">
+              <div>
+                <div className="text-xs uppercase tracking-[0.25em] text-[#7f828c]">SOON Video Workspace</div>
+                <h2 className="mt-2 text-2xl font-bold">影片生成工作台</h2>
+                <div className="mt-1 text-sm text-[#8d9099]">
+                  {currentFormat.label} {currentFormat.aspectRatio} · {tier === 'fast' ? '快速' : '標準'} · {inputMode === 'text' ? '文字' : inputMode === 'grid' ? '圖片' : '媒體'}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSegments(createFreshSegments())
+                    setActiveSegmentIndex(0)
+                    setGlobalError('')
+                  }}
+                  className="rounded-full border border-[#343741] px-4 py-2 text-sm font-bold text-[#d6d7dc] transition hover:border-[#8b5cf6]"
+                >
+                  新建
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void generateSingleSegment(activeSegmentIndex)}
+                  disabled={!canGenerateActive || isBusy}
+                  className="rounded-full border border-[#343741] px-4 py-2 text-sm font-bold text-[#d6d7dc] transition hover:border-[#ffb21a] disabled:opacity-40"
+                >
+                  重新生成
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-sm font-bold text-[#a5a7b2]">最近任務（{history.length}）</div>
+                {history.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => generateSingleSegment(index)}
-                    disabled={
-                      uploading ||
-                      segment.referenceUploading ||
-                      (inputMode === 'text'
-                        ? !segment.prompt.trim()
-                        : inputMode === 'grid'
-                        ? !imageUrl
-                        : segment.referenceUrls.length === 0) ||
-                      ['submitting', 'queued', 'generating'].includes(segment.status)
-                    }
-                    className="rounded-lg border border-[#333] px-4 py-2 text-sm font-bold transition hover:border-[#e8d5b0] hover:text-[#e8d5b0] disabled:cursor-not-allowed disabled:opacity-40"
+                    onClick={() => {
+                      window.localStorage.removeItem(HISTORY_KEY)
+                      setHistory([])
+                    }}
+                    className="text-xs font-bold text-[#8d9099] hover:text-white"
                   >
-                    生成
+                    清除
                   </button>
+                )}
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-2">
+                {history.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-[#30323a] px-4 py-5 text-sm text-[#858894]">
+                    尚未有生成紀錄
+                  </div>
+                ) : (
+                  history.map(item => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => restoreHistory(item)}
+                      className="w-36 shrink-0 rounded-xl border border-[#2d3038] bg-[#15161a] p-2 text-left transition hover:border-[#8b5cf6]"
+                    >
+                      <div className="line-clamp-2 h-10 text-xs font-bold">{item.fileName}</div>
+                      <div className="mt-2 text-[11px] text-[#858894]">{formatDateTime(item.createdAt)}</div>
+                      <div className="mt-2 text-[11px] text-[#b59cff]">{item.segments.length} 段影片</div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+              <div className="rounded-2xl border border-[#24262d] bg-[#111216] p-5">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-bold text-[#d946ef]">
+                      {latestVideoSegment?.status === 'completed' ? '完成' : STATUS_LABELS[activeSegment.status]}
+                    </div>
+                    <div className="mt-1 text-xs text-[#858894]">
+                      {activeSegment.requestId ? `Seed:${activeSegment.requestId.slice(0, 8)}` : '等待生成'}
+                    </div>
+                  </div>
+                  <div className="flex rounded-full border border-[#30323a] bg-black p-1">
+                    {segments.map((segment, index) => (
+                      <button
+                        key={`preview-${segment.label}`}
+                        type="button"
+                        onClick={() => setActiveSegmentIndex(index)}
+                        className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+                          activeSegmentIndex === index ? 'bg-[#7c5cff] text-white' : 'text-[#8d9099]'
+                        }`}
+                      >
+                        {segment.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                {inputMode === 'reference' && (
-                  <div className="mt-4 rounded-xl border border-[#252525] bg-[#0c0c0c] p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-bold">
-                          {index === 0 ? '上載第 1-8 格參考素材' : '上載第 8-15 格參考素材'}
-                        </div>
-                        <div className="mt-1 text-xs text-[#777]">
-                          最多 9 張，生成時會用 @Image1、@Image2... 作為參考圖。
-                        </div>
-                      </div>
-                      <label className="cursor-pointer rounded-lg border border-[#333] px-3 py-2 text-xs font-bold transition hover:border-[#e8d5b0] hover:text-[#e8d5b0]">
-                        選擇圖片
-                        <input
-                          type="file"
-                          multiple
-                          accept="image/jpeg,image/png,image/webp"
-                          onChange={event => void uploadReferenceFiles(index, event.target.files)}
-                          className="hidden"
-                        />
-                      </label>
-                    </div>
-
-                    {segment.referencePreviews.length > 0 && (
-                      <div className="mt-4 grid grid-cols-4 gap-2">
-                        {segment.referencePreviews.map((url, imageIndex) => (
-                          <div key={`${segment.label}-ref-${url}`} className="rounded-lg border border-[#222] bg-black/40 p-2">
-                            <img
-                              src={url}
-                              alt={`參考圖 ${imageIndex + 1}`}
-                              className="h-24 w-full rounded object-cover"
-                            />
-                            <div className="mt-1 truncate text-[11px] text-[#777]">
-                              @{`Image${imageIndex + 1}`} · {segment.referenceNames[imageIndex] ?? ''}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="mt-3 text-xs text-[#777]">
-                      {segment.referenceUploading
-                        ? '參考圖上載中...'
-                        : segment.referenceUrls.length > 0
-                          ? `${segment.referenceUrls.length} 張參考圖已上載`
-                          : '等待上載參考圖'}
-                    </div>
-                  </div>
-                )}
-
-                <textarea
-                  value={segment.prompt}
-                  onChange={event => updateSegment(index, { prompt: event.target.value })}
-                  rows={7}
-                  className="mt-4 w-full resize-y rounded-xl border border-[#2a2a2a] bg-[#0c0c0c] px-4 py-3 text-sm leading-6 text-[#e8e8e8] outline-none transition placeholder:text-[#555] focus:border-[#e8d5b0]"
-                />
-
-                {segment.endpointId && (
-                  <div className="mt-2 text-xs text-[#666]">生成端點：{segment.endpointId}</div>
-                )}
-
-                {segment.error && (
-                  <div className="mt-3 whitespace-pre-wrap rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
-                    {segment.error}
-                  </div>
-                )}
-
-                {segment.videoUrl && (
-                  <div className="mt-4 rounded-xl border border-[#252525] bg-[#0c0c0c] p-3">
+                <div className="flex min-h-[520px] items-center justify-center rounded-2xl bg-black">
+                  {latestVideoSegment?.videoUrl ? (
                     <video
-                      src={segment.videoUrl}
+                      src={latestVideoSegment.videoUrl}
                       controls
                       playsInline
-                      className="max-h-[520px] w-full rounded-lg bg-black"
+                      className="max-h-[74vh] w-full rounded-2xl bg-black object-contain"
                     />
-                    <a
-                      href={segment.videoUrl}
-                      download={`${segment.label.toLowerCase().replace(' ', '-')}.mp4`}
-                      className="mt-3 inline-flex rounded-lg bg-[#e8d5b0] px-4 py-2 text-sm font-bold text-[#0a0a0a] transition hover:opacity-90"
+                  ) : previewUrl && inputMode === 'grid' ? (
+                    <img src={previewUrl} alt="上載素材預覽" className="max-h-[74vh] w-full rounded-2xl object-contain" />
+                  ) : (
+                    <div className="px-6 text-center">
+                      <div className="text-lg font-bold text-[#d6d7dc]">預覽會顯示喺呢度</div>
+                      <p className="mt-2 text-sm leading-6 text-[#858894]">
+                        左邊填好 prompt、角色同輸出設定後，按生成目前段落。
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <a
+                    href={latestVideoSegment?.videoUrl || undefined}
+                    download={latestVideoSegment?.videoUrl ? `${latestVideoSegment.label}.mp4` : undefined}
+                    className={`rounded-xl px-4 py-3 text-center text-sm font-bold ${
+                      latestVideoSegment?.videoUrl
+                        ? 'bg-[#7c5cff] text-white'
+                        : 'pointer-events-none bg-[#24262d] text-[#6f727c]'
+                    }`}
+                  >
+                    下載
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => void navigator.clipboard.writeText(activeSegment.prompt)}
+                    className="rounded-xl border border-[#30323a] px-4 py-3 text-sm font-bold text-[#d6d7dc] transition hover:border-[#8b5cf6]"
+                  >
+                    複製 Prompt
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void generateSingleSegment(activeSegmentIndex)}
+                    disabled={!canGenerateActive || isBusy}
+                    className="rounded-xl border border-[#4c3569] bg-[#24152d] px-4 py-3 text-sm font-bold text-[#d8b4fe] transition hover:border-[#8b5cf6] disabled:opacity-40"
+                  >
+                    重新生成
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSegmentIndex(activeSegmentIndex === 0 ? 1 : 0)}
+                    className="rounded-xl border border-[#35405f] bg-[#141a2e] px-4 py-3 text-sm font-bold text-[#a8c7ff] transition hover:border-[#4f8cff]"
+                  >
+                    下一段
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {segments.map((segment, index) => (
+                  <article
+                    key={`task-${segment.label}`}
+                    className={`rounded-2xl border p-4 transition ${
+                      activeSegmentIndex === index
+                        ? 'border-[#7c5cff] bg-[#171420]'
+                        : 'border-[#24262d] bg-[#111216]'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setActiveSegmentIndex(index)}
+                      className="w-full text-left"
                     >
-                      下載影片
-                    </a>
-                  </div>
-                )}
-              </section>
-            ))}
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="font-bold">{segment.label}</div>
+                          <div className="mt-1 text-xs text-[#858894]">{STATUS_LABELS[segment.status]}</div>
+                        </div>
+                        <div
+                          className={`h-3 w-3 rounded-full ${
+                            segment.status === 'completed'
+                              ? 'bg-[#4fd1a1]'
+                              : segment.status === 'error'
+                                ? 'bg-[#ff657d]'
+                                : ['submitting', 'queued', 'generating'].includes(segment.status)
+                                  ? 'bg-[#ffb21a]'
+                                  : 'bg-[#3d4049]'
+                          }`}
+                        />
+                      </div>
+                      <p className="mt-3 line-clamp-4 text-xs leading-5 text-[#a5a7b2]">{segment.prompt}</p>
+                    </button>
+                    {segment.error && (
+                      <div className="mt-3 whitespace-pre-wrap rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
+                        {segment.error}
+                      </div>
+                    )}
+                    {segment.videoUrl && (
+                      <a
+                        href={segment.videoUrl}
+                        download={`${segment.label}.mp4`}
+                        className="mt-3 inline-flex rounded-lg border border-[#343741] px-3 py-2 text-xs font-bold text-[#d6d7dc]"
+                      >
+                        下載影片
+                      </a>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </div>
           </div>
         </section>
       </div>
