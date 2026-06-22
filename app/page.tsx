@@ -71,10 +71,12 @@ const OUTPUT_FORMATS: Record<OutputFormat, { label: string; aspectRatio: string;
 
 const DEFAULT_CHARACTER_PROMPT_LOCK = [
   '角色鎖定：Eggy',
-  '主角是 Eggy，一隻可愛的太陽蛋角色；圓形黃色蛋黃臉、白色蛋白身體、幼黑手腳、簡單圓點眼、細小笑口，帶有輕鬆幽默的香港感。',
+  '主角是 Eggy，一隻原創、可愛、圓潤、精力充沛的太陽蛋角色；白色蛋白身體、圓形黃色蛋黃臉、幼黑手腳、簡單圓點眼、細小笑口，帶有輕鬆幽默的香港感。',
+  'Eggy 性格天真、貪吃、樂觀、容易驚慌；行動有少少笨拙但很討喜，表情可以誇張，動作可以有兒童動畫式的喜劇節奏。',
   '每個鏡頭都要保持 Eggy 是同一隻非真人卡通蛋角色，不要變成真人、動物、機械人、其他食物或另一個吉祥物。',
   '請以已上載的參考圖作為 Eggy 外形、比例、面部、蛋白輪廓、手腳、表情和性格的準則。',
   'Eggy 可以開心、慌張、得戚、肚餓、驚訝或戲劇化，但必須保持同一個角色的辨識度。',
+  '整體感覺必須是原創可愛吉祥物，不要模仿、重現或引用任何現有卡通角色。',
 ].join('\n')
 
 const BUILT_IN_CHARACTER: CharacterProfile = {
@@ -285,38 +287,18 @@ export default function Home() {
   }
 
   function applyCharacterToSegment(character: CharacterProfile, index: number) {
-    const hasReferenceImages = character.assetUrls.length > 0
-    if (hasReferenceImages) setInputMode('reference')
-
     updateSegment(index, {
       prompt: mergeCharacterPrompt(segments[index]?.prompt ?? '', character),
-      ...(hasReferenceImages
-        ? {
-            referenceUrls: character.assetUrls.slice(0, MAX_CHARACTER_REFERENCES),
-            referenceNames: character.assetNames.slice(0, MAX_CHARACTER_REFERENCES),
-            referencePreviews: character.assetUrls.slice(0, MAX_CHARACTER_REFERENCES),
-          }
-        : {}),
       referenceUploading: false,
       error: '',
     })
   }
 
   function applyCharacterToAll(character: CharacterProfile) {
-    const hasReferenceImages = character.assetUrls.length > 0
-    if (hasReferenceImages) setInputMode('reference')
-
     setSegments(current =>
       current.map(segment => ({
         ...segment,
         prompt: mergeCharacterPrompt(segment.prompt, character),
-        ...(hasReferenceImages
-          ? {
-              referenceUrls: character.assetUrls.slice(0, MAX_CHARACTER_REFERENCES),
-              referenceNames: character.assetNames.slice(0, MAX_CHARACTER_REFERENCES),
-              referencePreviews: character.assetUrls.slice(0, MAX_CHARACTER_REFERENCES),
-            }
-          : {}),
         referenceUploading: false,
         error: '',
       }))
@@ -852,7 +834,7 @@ export default function Home() {
                     onClick={() => applyCharacterToAll(selectedCharacter)}
                     className="rounded-lg bg-[#7c5cfc] px-3 py-2 text-xs font-bold text-white transition hover:opacity-90"
                   >
-                    套用到全部
+                    套用文字到全部
                   </button>
                 )}
               </div>
@@ -878,7 +860,7 @@ export default function Home() {
                           <div className="text-sm font-bold">{selectedCharacter.name}</div>
                           <div className="mt-1 text-xs text-[#777]">
                             {selectedCharacter.assetUrls.length > 0
-                              ? `${selectedCharacter.assetUrls.length} 張參考圖，套用時會一併帶入 Seedance。`
+                              ? `${selectedCharacter.assetUrls.length} 張角色參考圖，會留在角色庫作身份設定；套用時只會加入角色鎖定文字。`
                               : '未有參考圖；套用時會先把角色鎖定文字加入 prompt。'}
                           </div>
                         </div>
@@ -914,7 +896,7 @@ export default function Home() {
                             onClick={() => applyCharacterToSegment(selectedCharacter, index)}
                             className="rounded-lg border border-[#333] px-3 py-2 text-xs font-bold transition hover:border-[#e8d5b0] hover:text-[#e8d5b0]"
                           >
-                            套用第 {index + 1} 段
+                            套用文字到第 {index + 1} 段
                           </button>
                         ))}
                         <button
@@ -922,7 +904,7 @@ export default function Home() {
                           onClick={() => applyCharacterToAll(selectedCharacter)}
                           className="rounded-lg border border-[#7c5cfc] px-3 py-2 text-xs font-bold text-[#b8a8ff] transition hover:bg-[#7c5cfc]/10"
                         >
-                          套用全部
+                          套用文字到全部
                         </button>
                       </div>
                     </div>
