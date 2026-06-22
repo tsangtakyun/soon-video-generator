@@ -77,6 +77,15 @@ const DEFAULT_CHARACTER_PROMPT_LOCK = [
   'Eggy 可以開心、慌張、得戚、肚餓、驚訝或戲劇化，但必須保持同一個角色的辨識度。',
 ].join('\n')
 
+const BUILT_IN_CHARACTER: CharacterProfile = {
+  id: 'built-in-eggy',
+  name: 'Eggy',
+  promptLock: DEFAULT_CHARACTER_PROMPT_LOCK,
+  assetUrls: [],
+  assetNames: [],
+  createdAt: '',
+}
+
 const SEGMENT_DEFAULTS = [
   '我俾文字稿你，我想你發揮最大創意，鏡頭要一直運動，一鏡直落，由第 1 格去到第 8 格；你唔需要錄旁白，只需要音效 / 環境聲：',
   '我俾文字稿你，我想你發揮最大創意，鏡頭要一直運動，一鏡直落，由第 8 格去到最後一格；你唔需要錄旁白，只需要音效 / 環境聲：',
@@ -230,11 +239,16 @@ export default function Home() {
       const savedCharacters = window.localStorage.getItem(CHARACTER_LIBRARY_KEY)
       if (savedCharacters) {
         const parsed = JSON.parse(savedCharacters) as CharacterProfile[]
-        setCharacterLibrary(parsed)
-        if (parsed[0]) setSelectedCharacterId(parsed[0].id)
+        const nextLibrary = parsed.length > 0 ? parsed : [BUILT_IN_CHARACTER]
+        setCharacterLibrary(nextLibrary)
+        if (nextLibrary[0]) setSelectedCharacterId(nextLibrary[0].id)
+      } else {
+        setCharacterLibrary([BUILT_IN_CHARACTER])
+        setSelectedCharacterId(BUILT_IN_CHARACTER.id)
       }
     } catch {
-      setCharacterLibrary([])
+      setCharacterLibrary([BUILT_IN_CHARACTER])
+      setSelectedCharacterId(BUILT_IN_CHARACTER.id)
     }
 
     return () => {
@@ -270,26 +284,38 @@ export default function Home() {
   }
 
   function applyCharacterToSegment(character: CharacterProfile, index: number) {
-    setInputMode('reference')
+    const hasReferenceImages = character.assetUrls.length > 0
+    if (hasReferenceImages) setInputMode('reference')
+
     updateSegment(index, {
       prompt: mergeCharacterPrompt(segments[index]?.prompt ?? '', character),
-      referenceUrls: character.assetUrls.slice(0, MAX_CHARACTER_REFERENCES),
-      referenceNames: character.assetNames.slice(0, MAX_CHARACTER_REFERENCES),
-      referencePreviews: character.assetUrls.slice(0, MAX_CHARACTER_REFERENCES),
+      ...(hasReferenceImages
+        ? {
+            referenceUrls: character.assetUrls.slice(0, MAX_CHARACTER_REFERENCES),
+            referenceNames: character.assetNames.slice(0, MAX_CHARACTER_REFERENCES),
+            referencePreviews: character.assetUrls.slice(0, MAX_CHARACTER_REFERENCES),
+          }
+        : {}),
       referenceUploading: false,
       error: '',
     })
   }
 
   function applyCharacterToAll(character: CharacterProfile) {
-    setInputMode('reference')
+    const hasReferenceImages = character.assetUrls.length > 0
+    if (hasReferenceImages) setInputMode('reference')
+
     setSegments(current =>
       current.map(segment => ({
         ...segment,
         prompt: mergeCharacterPrompt(segment.prompt, character),
-        referenceUrls: character.assetUrls.slice(0, MAX_CHARACTER_REFERENCES),
-        referenceNames: character.assetNames.slice(0, MAX_CHARACTER_REFERENCES),
-        referencePreviews: character.assetUrls.slice(0, MAX_CHARACTER_REFERENCES),
+        ...(hasReferenceImages
+          ? {
+              referenceUrls: character.assetUrls.slice(0, MAX_CHARACTER_REFERENCES),
+              referenceNames: character.assetNames.slice(0, MAX_CHARACTER_REFERENCES),
+              referencePreviews: character.assetUrls.slice(0, MAX_CHARACTER_REFERENCES),
+            }
+          : {}),
         referenceUploading: false,
         error: '',
       }))
@@ -817,7 +843,7 @@ export default function Home() {
                     onClick={() => applyCharacterToAll(selectedCharacter)}
                     className="rounded-lg bg-[#7c5cfc] px-3 py-2 text-xs font-bold text-white transition hover:opacity-90"
                   >
-                    套用全部
+                    套用到全部
                   </button>
                 )}
               </div>
@@ -842,28 +868,34 @@ export default function Home() {
                         <div>
                           <div className="text-sm font-bold">{selectedCharacter.name}</div>
                           <div className="mt-1 text-xs text-[#777]">
-                            {selectedCharacter.assetUrls.length} 張參考圖
+                            {selectedCharacter.assetUrls.length > 0
+                              ? `${selectedCharacter.assetUrls.length} 張參考圖，套用時會一併帶入 Seedance。`
+                              : '未有參考圖；套用時會先把角色鎖定文字加入 prompt。'}
                           </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => deleteCharacter(selectedCharacter.id)}
-                          className="rounded-lg border border-red-500/30 px-3 py-2 text-xs font-bold text-red-200 transition hover:bg-red-500/10"
-                        >
-                          刪除
-                        </button>
+                        {selectedCharacter.id !== BUILT_IN_CHARACTER.id && (
+                          <button
+                            type="button"
+                            onClick={() => deleteCharacter(selectedCharacter.id)}
+                            className="rounded-lg border border-red-500/30 px-3 py-2 text-xs font-bold text-red-200 transition hover:bg-red-500/10"
+                          >
+                            刪除
+                          </button>
+                        )}
                       </div>
 
-                      <div className="mt-3 grid grid-cols-3 gap-2">
-                        {selectedCharacter.assetUrls.slice(0, 6).map((url, imageIndex) => (
-                          <img
-                            key={`${selectedCharacter.id}-${url}`}
-                            src={url}
-                            alt={`${selectedCharacter.name} 參考圖 ${imageIndex + 1}`}
-                            className="h-20 w-full rounded-lg border border-[#222] object-cover"
-                          />
-                        ))}
-                      </div>
+                      {selectedCharacter.assetUrls.length > 0 && (
+                        <div className="mt-3 grid grid-cols-3 gap-2">
+                          {selectedCharacter.assetUrls.slice(0, 6).map((url, imageIndex) => (
+                            <img
+                              key={`${selectedCharacter.id}-${url}`}
+                              src={url}
+                              alt={`${selectedCharacter.name} 參考圖 ${imageIndex + 1}`}
+                              className="h-20 w-full rounded-lg border border-[#222] object-cover"
+                            />
+                          ))}
+                        </div>
+                      )}
 
                       <div className="mt-3 grid grid-cols-3 gap-2">
                         {segments.map((segment, index) => (
@@ -873,7 +905,7 @@ export default function Home() {
                             onClick={() => applyCharacterToSegment(selectedCharacter, index)}
                             className="rounded-lg border border-[#333] px-3 py-2 text-xs font-bold transition hover:border-[#e8d5b0] hover:text-[#e8d5b0]"
                           >
-                            套用 S{index + 1}
+                            套用第 {index + 1} 段
                           </button>
                         ))}
                         <button
@@ -881,7 +913,7 @@ export default function Home() {
                           onClick={() => applyCharacterToAll(selectedCharacter)}
                           className="rounded-lg border border-[#7c5cfc] px-3 py-2 text-xs font-bold text-[#b8a8ff] transition hover:bg-[#7c5cfc]/10"
                         >
-                          全部
+                          套用全部
                         </button>
                       </div>
                     </div>
@@ -890,6 +922,10 @@ export default function Home() {
               )}
 
               <div className="mt-4 space-y-3 border-t border-[#222] pt-4">
+                <div className="text-xs font-bold text-[#888]">新增／更新角色參考圖</div>
+                <div className="text-xs leading-5 text-[#666]">
+                  平時只需要在上面揀角色再按套用。只有建立新角色，或想補充角色參考圖時，先用下面欄位上載。
+                </div>
                 <input
                   value={characterName}
                   onChange={event => setCharacterName(event.target.value)}
@@ -903,7 +939,7 @@ export default function Home() {
                   className="w-full resize-y rounded-lg border border-[#333] bg-black px-3 py-2 text-xs leading-5 outline-none transition placeholder:text-[#555] focus:border-[#e8d5b0]"
                 />
                 <label className="flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-[#333] bg-black px-4 py-4 text-center text-xs font-bold transition hover:border-[#e8d5b0] hover:text-[#e8d5b0]">
-                  {characterUploading ? '上載角色中...' : '新增角色參考圖（1-9 張）'}
+                  {characterUploading ? '上載角色中...' : '上載並儲存角色參考圖（1-9 張）'}
                   <input
                     type="file"
                     multiple
