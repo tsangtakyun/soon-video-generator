@@ -138,14 +138,22 @@ function formatBytes(bytes: number) {
   return `${Math.ceil(bytes / 1024)} KB`
 }
 
-function buildSeedancePrompt(prompt: string, inputMode: InputMode, imageCount: number) {
+function buildSeedancePrompt(
+  prompt: string,
+  inputMode: InputMode,
+  imageCount: number,
+  characterImageCount: number
+) {
   const referenceInstruction =
     inputMode === 'reference'
       ? [
           `請使用已上載的 ${imageCount} 張參考圖作為視覺參考。`,
+          characterImageCount > 0
+            ? `其中前 ${characterImageCount} 張是角色庫參考圖，請優先用來鎖定主角外形、比例、五官和整體氣質。`
+            : '',
           '如果 prompt 提到 @Image1、@Image2 等，請按對應圖片理解角色、場景、構圖或動作。',
           '不要將所有參考圖硬塞進同一個畫面；請按文字描述選擇最相關的視覺元素。',
-        ].join('\n')
+        ].filter(Boolean).join('\n')
       : ''
 
   return [prompt.trim(), referenceInstruction, SAFETY_WRAPPER].filter(Boolean).join('\n\n')
@@ -249,6 +257,20 @@ export default function Home() {
   const activeSegment = segments[activeSegmentIndex]
   const latestVideoSegment = [...segments].reverse().find(segment => segment.videoUrl) ?? activeSegment
   const currentFormat = OUTPUT_FORMATS[outputFormat]
+
+  function getCharacterReferenceUrls() {
+    return (selectedCharacter?.assetUrls ?? []).filter(url => typeof url === 'string' && url.trim())
+  }
+
+  function getGenerationReferenceUrls(segment: SegmentState) {
+    const urls = [...getCharacterReferenceUrls()]
+    if (inputMode === 'grid' && imageUrl) urls.push(imageUrl)
+    if (inputMode === 'reference') urls.push(...segment.referenceUrls)
+    return Array.from(new Set(urls.filter(Boolean))).slice(0, 9)
+  }
+
+  const characterReferenceCount = Math.min(getCharacterReferenceUrls().length, 9)
+  const activeGenerationReferenceCount = activeSegment ? getGenerationReferenceUrls(activeSegment).length : 0
   const isBusy =
     uploading ||
     segments.some(segment =>
@@ -258,12 +280,12 @@ export default function Home() {
     Boolean(activeSegment?.prompt.trim()) &&
     (inputMode === 'text' ||
       (inputMode === 'grid' && Boolean(imageUrl)) ||
-      (inputMode === 'reference' && activeSegment.referenceUrls.length > 0))
+      (inputMode === 'reference' && activeGenerationReferenceCount > 0))
   const canGenerateAll =
     segments.every(segment => segment.prompt.trim()) &&
     (inputMode === 'text' ||
       (inputMode === 'grid' && Boolean(imageUrl)) ||
-      (inputMode === 'reference' && segments.every(segment => segment.referenceUrls.length > 0)))
+      (inputMode === 'reference' && segments.every(segment => getGenerationReferenceUrls(segment).length > 0)))
 
   function updateSegment(index: number, patch: Partial<SegmentState>) {
     setSegments(current =>
@@ -497,14 +519,21 @@ export default function Home() {
     const segment = segments[index]
     if (!segment.prompt.trim()) throw new Error(`請先填寫 ${segment.label} 的 prompt。`)
     if (inputMode === 'grid' && !imageUrl) throw new Error('請先上載一張分鏡圖。')
-    if (inputMode === 'reference' && segment.referenceUrls.length === 0) {
+    const generationReferenceUrls = getGenerationReferenceUrls(segment)
+    const effectiveMode: InputMode = generationReferenceUrls.length > 0 ? 'reference' : inputMode
+    const promptWithCharacter = selectedCharacter
+      ? mergeCharacterPrompt(segment.prompt, selectedCharacter)
+      : segment.prompt
+
+    if (inputMode === 'reference' && generationReferenceUrls.length === 0) {
       throw new Error(`請先上載 ${segment.label} 的參考圖。`)
     }
 
     const finalPrompt = buildSeedancePrompt(
-      segment.prompt,
-      inputMode,
-      inputMode === 'reference' ? segment.referenceUrls.length : 0
+      promptWithCharacter,
+      effectiveMode,
+      generationReferenceUrls.length,
+      characterReferenceCount
     )
 
     updateSegment(index, {
@@ -519,12 +548,12 @@ export default function Home() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        imageUrl,
-        imageUrls: segment.referenceUrls,
+        imageUrl: effectiveMode === 'reference' ? '' : imageUrl,
+        imageUrls: generationReferenceUrls,
         prompt: finalPrompt,
         tier,
         outputFormat,
-        mode: inputMode,
+        mode: effectiveMode,
       }),
     })
     const data = await response.json()
@@ -733,6 +762,11 @@ export default function Home() {
                     ) : (
                       <div className="rounded-lg border border-dashed border-[#32343c] px-3 py-3 text-xs leading-5 text-[#8d9099]">
                         目前用文字鎖定角色。需要更穩定外形時，可以新增角色參考圖。
+                      </div>
+                    )}
+                    {selectedCharacter.assetUrls.length > 0 && (
+                      <div className="mt-3 rounded-lg border border-[#4fd1a1]/30 bg-[#4fd1a1]/10 px-3 py-2 text-xs leading-5 text-[#b9f6df]">
+                        生成時會自動送入 {Math.min(selectedCharacter.assetUrls.length, 9)} 張角色參考圖；即使選擇「文字」模式，也會使用 Seedance 多圖參考來鎖定外形。
                       </div>
                     )}
                     <div className="mt-3 grid grid-cols-2 gap-2">
