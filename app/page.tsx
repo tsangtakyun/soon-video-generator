@@ -55,6 +55,11 @@ const MAX_HISTORY = 8
 const MAX_CHARACTER_REFERENCES = 9
 const SAFE_UPLOAD_BYTES = 4 * 1024 * 1024
 const MAX_COMPRESSED_DIMENSION = 2048
+const CLIP_DURATION_SECONDS = 15
+const SEEDANCE_RATES: Record<Tier, number> = {
+  fast: 0.2419,
+  standard: 0.3034,
+}
 
 const OUTPUT_FORMATS: Record<OutputFormat, { label: string; aspectRatio: string; note: string }> = {
   ig: { label: 'IG', aspectRatio: '9:16', note: '直向短片尺寸' },
@@ -196,6 +201,7 @@ export default function Home() {
   const [tier, setTier] = useState<Tier>('fast')
   const [outputFormat, setOutputFormat] = useState<OutputFormat>('ig')
   const [inputMode, setInputMode] = useState<InputMode>('text')
+  const [generateAudio, setGenerateAudio] = useState(false)
   const [activeSegmentIndex, setActiveSegmentIndex] = useState(0)
   const [fileName, setFileName] = useState('')
   const [previewUrl, setPreviewUrl] = useState('')
@@ -257,6 +263,9 @@ export default function Home() {
   const activeSegment = segments[activeSegmentIndex]
   const latestVideoSegment = [...segments].reverse().find(segment => segment.videoUrl) ?? activeSegment
   const currentFormat = OUTPUT_FORMATS[outputFormat]
+  const currentRate = SEEDANCE_RATES[tier]
+  const estimatedSingleCost = currentRate * CLIP_DURATION_SECONDS
+  const estimatedBothCost = estimatedSingleCost * 2
 
   function getCharacterReferenceUrls() {
     return (selectedCharacter?.assetUrls ?? []).filter(url => typeof url === 'string' && url.trim())
@@ -554,6 +563,7 @@ export default function Home() {
         tier,
         outputFormat,
         mode: effectiveMode,
+        generateAudio,
       }),
     })
     const data = await response.json()
@@ -944,7 +954,12 @@ export default function Home() {
                     }`}
                   >
                     <div className="font-bold">{option === 'fast' ? '快速' : '標準'}</div>
-                    <div className="mt-1 text-xs text-[#a5a7b2]">約 US${option === 'fast' ? '0.24' : '0.30'} / 秒</div>
+                    <div className="mt-1 text-xs text-[#a5a7b2]">
+                      US${SEEDANCE_RATES[option].toFixed(4)} / 秒
+                    </div>
+                    <div className="mt-2 text-sm font-bold text-[#f8d477]">
+                      15 秒約 US${(SEEDANCE_RATES[option] * CLIP_DURATION_SECONDS).toFixed(2)}
+                    </div>
                   </button>
                 ))}
               </div>
@@ -973,7 +988,7 @@ export default function Home() {
               <div className="mt-4 rounded-xl border border-[#2d3038] bg-[#15161a] p-4">
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-bold">時長</span>
-                  <span className="font-bold text-[#8fb7ff]">15 秒</span>
+                  <span className="font-bold text-[#8fb7ff]">{CLIP_DURATION_SECONDS} 秒</span>
                 </div>
                 <div className="mt-3 h-2 rounded-full bg-[#2a2c33]">
                   <div className="h-2 w-full rounded-full bg-[#4f8cff]" />
@@ -984,6 +999,41 @@ export default function Home() {
                     720p
                   </span>
                 </div>
+              </div>
+
+              <div className="mt-4 rounded-xl border border-[#2d3038] bg-[#15161a] p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-bold">原生音訊</div>
+                    <div className="mt-1 text-xs leading-5 text-[#a5a7b2]">
+                      fal 顯示音訊不額外收費；開啟後有機會撞 Seedance 音訊審核。
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setGenerateAudio(value => !value)}
+                    className={`relative h-7 w-12 rounded-full border transition ${
+                      generateAudio
+                        ? 'border-[#4fd1a1] bg-[#123429]'
+                        : 'border-[#3a3d46] bg-[#24262d]'
+                    }`}
+                    aria-pressed={generateAudio}
+                    aria-label="切換原生音訊"
+                  >
+                    <span
+                      className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${
+                        generateAudio ? 'left-6' : 'left-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+                <div className="mt-3 rounded-lg border border-[#343741] bg-black/30 px-3 py-2 text-xs text-[#d6d7dc]">
+                  目前：{generateAudio ? '開啟，生成時嘗試包含原生音訊' : '關閉，只生成畫面，較穩定'}
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-xl border border-[#4f8cff]/30 bg-[#4f8cff]/10 p-4 text-sm leading-6 text-[#cfe0ff]">
+                估算成本：目前段落約 US${estimatedSingleCost.toFixed(2)}；生成兩段約 US${estimatedBothCost.toFixed(2)}。
               </div>
 
               <button

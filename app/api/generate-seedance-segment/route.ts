@@ -100,6 +100,7 @@ export async function POST(req: NextRequest) {
       tier = 'fast',
       outputFormat = 'ig',
       mode = 'image',
+      generateAudio = false,
     } = await req.json()
 
     const selectedTier: SeedanceTier = tier === 'standard' ? 'standard' : 'fast'
@@ -127,8 +128,7 @@ export async function POST(req: NextRequest) {
       resolution: '720p',
       duration: selectedMode === 'reference' ? 'auto' : '15',
       aspect_ratio: ASPECT_RATIOS[selectedFormat],
-      // Keep native Seedance audio off for now to avoid audio policy false positives.
-      generate_audio: false,
+      generate_audio: Boolean(generateAudio),
     }
 
     const input =
